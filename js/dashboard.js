@@ -570,26 +570,475 @@ async function submitComplaint() {
   btn.textContent = "Submit Complaint";
 }
 
-/* ========== Other Modules (basic) ========== */
-function renderCustomers(area) {
+/* ========== CUSTOMERS MODULE ========== */
+async function renderCustomers(area) {
   area.innerHTML = `
+    <div class="card" id="customerFormCard" style="display:none;">
+      <div class="card-header">
+        <h3 class="card-title" id="customerFormTitle">New Customer</h3>
+        <button class="btn btn-outline btn-sm" onclick="hideCustomerForm()">Cancel</button>
+      </div>
+      <input type="hidden" id="editCustomerId" value="" />
+      <div class="form-row">
+        <div class="form-field"><label>Full Name *</label><input id="cName" placeholder="Customer Name" /></div>
+        <div class="form-field"><label>CNIC</label><input id="cCnic" placeholder="XXXXX-XXXXXXX-X" /></div>
+        <div class="form-field"><label>Phone *</label><input id="cPhone" placeholder="03XXXXXXXXX" /></div>
+        <div class="form-field"><label>Email</label><input id="cEmail" placeholder="email@example.com" /></div>
+        <div class="form-field"><label>Package</label>
+          <select id="cPackage">
+            <option value="10 Mbps">10 Mbps</option>
+            <option value="20 Mbps">20 Mbps</option>
+            <option value="30 Mbps">30 Mbps</option>
+            <option value="50 Mbps">50 Mbps</option>
+            <option value="100 Mbps">100 Mbps</option>
+          </select>
+        </div>
+        <div class="form-field"><label>Monthly Rent</label><input id="cRent" type="number" placeholder="2500" value="2500" /></div>
+        <div class="form-field"><label>ONU Serial</label><input id="cOnu" placeholder="ONU Serial Number" /></div>
+        <div class="form-field"><label>Fiber Port</label><input id="cPort" placeholder="PON-1 / Port-5" /></div>
+        <div class="form-field"><label>Area</label><input id="cArea" placeholder="Block / Area Name" /></div>
+        <div class="form-field"><label>GPS Location</label><input id="cGps" placeholder="Lat, Long" /></div>
+        <div class="form-field"><label>Status</label>
+          <select id="cStatus">
+            <option value="active">Active</option>
+            <option value="suspended">Suspended</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-field" style="margin-bottom:16px;"><label>Address</label><textarea id="cAddress" rows="2" placeholder="Full Address"></textarea></div>
+      <button class="btn btn-primary" id="saveCustomerBtn" onclick="saveCustomer()">Save Customer</button>
+    </div>
+
     <div class="card">
       <div class="card-header">
         <h3 class="card-title">Customers</h3>
-        <button class="btn btn-primary" onclick="showToast('Customer module - next update','info')">+ New Customer</button>
+        <button class="btn btn-primary" onclick="showCustomerForm()">+ New Customer</button>
       </div>
-      <p style="color:var(--text-muted);padding:20px;">Customer management module will be connected next. Complaint system is now live.</p>
+      <div class="form-row" style="margin-bottom:12px;">
+        <div class="form-field"><input type="text" id="customerSearch" placeholder="Search name, CNIC, phone, ONU..." oninput="loadCustomersList()" /></div>
+      </div>
+      <div id="customersList">Loading...</div>
     </div>
   `;
+  loadCustomersList();
 }
 
-function renderBilling(area) {
+function showCustomerForm(id) {
+  document.getElementById("customerFormCard").style.display = "block";
+  document.getElementById("customerFormTitle").textContent = id ? "Edit Customer" : "New Customer";
+  document.getElementById("editCustomerId").value = id || "";
+  if (!id) {
+    ["cName","cCnic","cPhone","cEmail","cOnu","cPort","cArea","cGps","cAddress"].forEach(i => {
+      const el = document.getElementById(i); if (el) el.value = "";
+    });
+    document.getElementById("cPackage").value = "20 Mbps";
+    document.getElementById("cRent").value = "2500";
+    document.getElementById("cStatus").value = "active";
+  }
+}
+
+function hideCustomerForm() {
+  document.getElementById("customerFormCard").style.display = "none";
+}
+
+async function saveCustomer() {
+  const id = document.getElementById("editCustomerId").value;
+  const data = {
+    name: document.getElementById("cName").value.trim(),
+    cnic: document.getElementById("cCnic").value.trim(),
+    phone: document.getElementById("cPhone").value.trim(),
+    email: document.getElementById("cEmail").value.trim(),
+    package: document.getElementById("cPackage").value,
+    rent: Number(document.getElementById("cRent").value) || 0,
+    onuSerial: document.getElementById("cOnu").value.trim(),
+    fiberPort: document.getElementById("cPort").value.trim(),
+    area: document.getElementById("cArea").value.trim(),
+    gps: document.getElementById("cGps").value.trim(),
+    address: document.getElementById("cAddress").value.trim(),
+    status: document.getElementById("cStatus").value,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  if (!data.name || !data.phone) {
+    showToast("Name and Phone required", "error");
+    return;
+  }
+
+  const btn = document.getElementById("saveCustomerBtn");
+  btn.disabled = true;
+  btn.textContent = "Saving...";
+
+  try {
+    if (id) {
+      await db.collection("customers").doc(id).update(data);
+      showToast("Customer updated", "success");
+    } else {
+      data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      data.createdBy = user.uid;
+      await db.collection("customers").add(data);
+      showToast("Customer added", "success");
+    }
+    hideCustomerForm();
+    loadCustomersList();
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+  btn.disabled = false;
+  btn.textContent = "Save Customer";
+}
+
+async function loadCustomersList() {
+  const el = document.getElementById("customersList");
+  if (!el) return;
+  const search = (document.getElementById("customerSearch")?.value || "").toLowerCase();
+
+  try {
+    const snap = await db.collection("customers").get();
+    let docs = [];
+    snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+
+    if (search) {
+      docs = docs.filter(d =>
+        (d.name || "").toLowerCase().includes(search) ||
+        (d.cnic || "").toLowerCase().includes(search) ||
+        (d.phone || "").includes(search) ||
+        (d.onuSerial || "").toLowerCase().includes(search)
+      );
+    }
+
+    if (docs.length === 0) {
+      el.innerHTML = `<div class="empty-state"><p>No customers found</p></div>`;
+      return;
+    }
+
+    let html = `<div class="table-wrapper"><table>
+      <thead><tr><th>Name</th><th>CNIC</th><th>Phone</th><th>Package</th><th>ONU</th><th>Status</th><th>Actions</th></tr></thead><tbody>`;
+    docs.forEach(d => {
+      html += `<tr>
+        <td>${d.name || "-"}<br><small style="color:var(--text-muted)">${d.area || ""}</small></td>
+        <td>${d.cnic || "-"}</td>
+        <td>${d.phone || "-"}</td>
+        <td>${d.package || "-"}</td>
+        <td>${d.onuSerial || "-"}</td>
+        <td><span class="status ${d.status === "active" ? "active" : "suspended"}">${d.status || "active"}</span></td>
+        <td>
+          <button class="btn btn-sm btn-outline" onclick="editCustomer('${d.id}')">Edit</button>
+          <button class="btn btn-sm btn-outline" onclick="deleteCustomer('${d.id}')">Del</button>
+        </td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<p style="color:var(--danger);padding:16px;">Error: ${e.message}</p>`;
+  }
+}
+
+async function editCustomer(id) {
+  try {
+    const doc = await db.collection("customers").doc(id).get();
+    if (!doc.exists) return;
+    const d = doc.data();
+    showCustomerForm(id);
+    document.getElementById("cName").value = d.name || "";
+    document.getElementById("cCnic").value = d.cnic || "";
+    document.getElementById("cPhone").value = d.phone || "";
+    document.getElementById("cEmail").value = d.email || "";
+    document.getElementById("cPackage").value = d.package || "20 Mbps";
+    document.getElementById("cRent").value = d.rent || 2500;
+    document.getElementById("cOnu").value = d.onuSerial || "";
+    document.getElementById("cPort").value = d.fiberPort || "";
+    document.getElementById("cArea").value = d.area || "";
+    document.getElementById("cGps").value = d.gps || "";
+    document.getElementById("cAddress").value = d.address || "";
+    document.getElementById("cStatus").value = d.status || "active";
+  } catch (e) {
+    showToast("Error loading customer", "error");
+  }
+}
+
+async function deleteCustomer(id) {
+  if (!confirm("Delete this customer?")) return;
+  try {
+    await db.collection("customers").doc(id).delete();
+    showToast("Customer deleted", "success");
+    loadCustomersList();
+  } catch (e) {
+    showToast("Delete failed", "error");
+  }
+}
+
+/* ========== BILLING MODULE ========== */
+async function renderBilling(area) {
   area.innerHTML = `
+    <div class="stats-grid" id="billingStats">
+      <div class="stat-card"><div class="stat-icon green">${iconMoney()}</div><div class="stat-info"><h3 id="statPaid">-</h3><p>Paid this Month</p></div></div>
+      <div class="stat-card"><div class="stat-icon orange">${iconBill()}</div><div class="stat-info"><h3 id="statPending">-</h3><p>Pending Bills</p></div></div>
+      <div class="stat-card"><div class="stat-icon blue">${iconCheck()}</div><div class="stat-info"><h3 id="statTotal">-</h3><p>Total Bills</p></div></div>
+    </div>
+
     <div class="card">
-      <div class="card-header"><h3 class="card-title">Billing & Payments</h3></div>
-      <p style="color:var(--text-muted);padding:20px;">Billing module coming in next update. Complaint system is live now.</p>
+      <div class="card-header"><h3 class="card-title">Generate / Record Bill</h3></div>
+      <div class="form-row">
+        <div class="form-field"><label>Customer *</label>
+          <select id="billCustomer"><option value="">Select Customer</option></select>
+        </div>
+        <div class="form-field"><label>Month *</label>
+          <input type="month" id="billMonth" />
+        </div>
+        <div class="form-field"><label>Amount *</label>
+          <input type="number" id="billAmount" placeholder="2500" />
+        </div>
+        <div class="form-field"><label>Payment Method</label>
+          <select id="billMethod">
+            <option value="pending">Pending (Unpaid)</option>
+            <option value="cash">Cash</option>
+            <option value="easypaisa">EasyPaisa</option>
+            <option value="jazzcash">JazzCash</option>
+            <option value="bank">Bank Transfer</option>
+          </select>
+        </div>
+        <div class="form-field"><label>Txn / Receipt No</label>
+          <input type="text" id="billTxn" placeholder="Optional" />
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="saveBill()">Save Bill</button>
+        <button class="btn btn-outline" onclick="generateAllBills()">Auto Generate (All Active)</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Bills</h3>
+        <select id="billFilter" onchange="loadBillsList()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);">
+          <option value="all">All</option>
+          <option value="pending">Pending</option>
+          <option value="paid">Paid</option>
+        </select>
+      </div>
+      <div id="billsList">Loading...</div>
     </div>
   `;
+
+  // Set current month
+  const now = new Date();
+  document.getElementById("billMonth").value = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+
+  // Load customers for dropdown
+  try {
+    const snap = await db.collection("customers").get();
+    const sel = document.getElementById("billCustomer");
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (d.status === "active" || !d.status) {
+        sel.innerHTML += `<option value="${doc.id}" data-rent="${d.rent || 2500}">${d.name} (${d.phone || ""})</option>`;
+      }
+    });
+    sel.addEventListener("change", () => {
+      const opt = sel.options[sel.selectedIndex];
+      if (opt.dataset.rent) document.getElementById("billAmount").value = opt.dataset.rent;
+    });
+  } catch (e) {}
+
+  loadBillsList();
+  loadBillingStats();
+}
+
+async function saveBill() {
+  const customerId = document.getElementById("billCustomer").value;
+  const month = document.getElementById("billMonth").value;
+  const amount = Number(document.getElementById("billAmount").value);
+  const method = document.getElementById("billMethod").value;
+  const txn = document.getElementById("billTxn").value.trim();
+
+  if (!customerId || !month || !amount) {
+    showToast("Customer, Month and Amount required", "error");
+    return;
+  }
+
+  try {
+    const custDoc = await db.collection("customers").doc(customerId).get();
+    const cust = custDoc.data() || {};
+
+    const bill = {
+      customerId,
+      customerName: cust.name || "",
+      customerPhone: cust.phone || "",
+      month,
+      amount,
+      method,
+      txnNo: txn,
+      status: method === "pending" ? "pending" : "paid",
+      paidAt: method !== "pending" ? firebase.firestore.FieldValue.serverTimestamp() : null,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: user.uid
+    };
+
+    await db.collection("bills").add(bill);
+    showToast("Bill saved", "success");
+    document.getElementById("billTxn").value = "";
+    loadBillsList();
+    loadBillingStats();
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+}
+
+async function generateAllBills() {
+  if (!confirm("Generate bills for all Active customers for current month?")) return;
+  const month = document.getElementById("billMonth").value;
+  if (!month) { showToast("Select month first", "error"); return; }
+
+  try {
+    const snap = await db.collection("customers").get();
+    let count = 0;
+    const batch = db.batch();
+
+    for (const doc of snap.docs) {
+      const d = doc.data();
+      if (d.status === "suspended") continue;
+      const ref = db.collection("bills").doc();
+      batch.set(ref, {
+        customerId: doc.id,
+        customerName: d.name || "",
+        customerPhone: d.phone || "",
+        month,
+        amount: d.rent || 2500,
+        method: "pending",
+        txnNo: "",
+        status: "pending",
+        paidAt: null,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        createdBy: user.uid,
+        autoGenerated: true
+      });
+      count++;
+    }
+    await batch.commit();
+    showToast(`${count} bills generated`, "success");
+    loadBillsList();
+    loadBillingStats();
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+}
+
+async function loadBillsList() {
+  const el = document.getElementById("billsList");
+  if (!el) return;
+  const filter = document.getElementById("billFilter")?.value || "all";
+
+  try {
+    const snap = await db.collection("bills").get();
+    let docs = [];
+    snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+    docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+    if (filter === "pending") docs = docs.filter(d => d.status === "pending");
+    if (filter === "paid") docs = docs.filter(d => d.status === "paid");
+
+    if (docs.length === 0) {
+      el.innerHTML = `<div class="empty-state"><p>No bills found</p></div>`;
+      return;
+    }
+
+    let html = `<div class="table-wrapper"><table>
+      <thead><tr><th>Customer</th><th>Month</th><th>Amount</th><th>Method</th><th>Status</th><th>Actions</th></tr></thead><tbody>`;
+    docs.forEach(d => {
+      html += `<tr>
+        <td>${d.customerName || "-"}<br><small>${d.customerPhone || ""}</small></td>
+        <td>${d.month || "-"}</td>
+        <td>₨ ${d.amount || 0}</td>
+        <td>${d.method || "-"}</td>
+        <td><span class="status ${d.status === "paid" ? "active" : "pending"}">${d.status}</span></td>
+        <td>
+          ${d.status === "pending" ? `<button class="btn btn-sm btn-primary" onclick="markPaid('${d.id}')">Mark Paid</button>` : ""}
+          <button class="btn btn-sm btn-outline" onclick="printBill('${d.id}')">PDF</button>
+        </td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<p style="color:var(--danger);padding:16px;">Error loading bills</p>`;
+  }
+}
+
+async function markPaid(id) {
+  const method = prompt("Payment method:\n1=Cash  2=EasyPaisa  3=JazzCash  4=Bank\n\nType 1-4:");
+  const map = { "1": "cash", "2": "easypaisa", "3": "jazzcash", "4": "bank" };
+  const m = map[method];
+  if (!m) return;
+
+  const txn = prompt("Transaction / Receipt No (optional):") || "";
+
+  try {
+    await db.collection("bills").doc(id).update({
+      status: "paid",
+      method: m,
+      txnNo: txn,
+      paidAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    showToast("Marked as paid", "success");
+    loadBillsList();
+    loadBillingStats();
+  } catch (e) {
+    showToast("Error", "error");
+  }
+}
+
+async function printBill(id) {
+  try {
+    const doc = await db.collection("bills").doc(id).get();
+    if (!doc.exists) return;
+    const d = doc.data();
+    const w = window.open("", "_blank");
+    w.document.write(`
+      <html><head><title>Bill - ${d.customerName}</title>
+      <style>body{font-family:Arial;padding:40px;max-width:500px;margin:auto}
+      h1{color:#1e88e5} .row{display:flex;justify-content:space-between;margin:8px 0}
+      .total{font-size:1.3em;font-weight:bold;border-top:2px solid #333;padding-top:10px;margin-top:20px}
+      @media print{button{display:none}}</style></head><body>
+      <h1>FiberHub ISP</h1>
+      <p>Manage Your Network with Confidence</p><hr>
+      <div class="row"><span>Customer:</span><strong>${d.customerName || "-"}</strong></div>
+      <div class="row"><span>Phone:</span><span>${d.customerPhone || "-"}</span></div>
+      <div class="row"><span>Month:</span><span>${d.month || "-"}</span></div>
+      <div class="row"><span>Method:</span><span>${d.method || "-"}</span></div>
+      <div class="row"><span>Txn No:</span><span>${d.txnNo || "-"}</span></div>
+      <div class="row total"><span>Amount:</span><span>₨ ${d.amount || 0}</span></div>
+      <div class="row"><span>Status:</span><strong>${d.status}</strong></div>
+      <br><button onclick="window.print()">Print / Save PDF</button>
+      </body></html>
+    `);
+    w.document.close();
+  } catch (e) {
+    showToast("Error generating bill", "error");
+  }
+}
+
+async function loadBillingStats() {
+  try {
+    const snap = await db.collection("bills").get();
+    let paid = 0, pending = 0, total = 0;
+    const now = new Date();
+    const thisMonth = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+
+    snap.forEach(doc => {
+      const d = doc.data();
+      total++;
+      if (d.status === "pending") pending++;
+      if (d.status === "paid" && d.month === thisMonth) paid += (d.amount || 0);
+    });
+
+    const el1 = document.getElementById("statPaid");
+    const el2 = document.getElementById("statPending");
+    const el3 = document.getElementById("statTotal");
+    if (el1) el1.textContent = "₨ " + paid.toLocaleString();
+    if (el2) el2.textContent = pending;
+    if (el3) el3.textContent = total;
+  } catch (e) {}
 }
 
 /* ========== USERS (Admin only) ========== */
@@ -723,28 +1172,331 @@ async function loadUsersList() {
   }
 }
 
-function renderNetwork(area) {
-  area.innerHTML = `<div class="card"><div class="card-header"><h3 class="card-title">Network Module</h3></div>
-    <p style="color:var(--text-muted);padding:20px;">Coming soon - OLT, PON Port, Splitter, Fiber, ONU/Router Stock</p></div>`;
+/* ========== NETWORK MODULE ========== */
+async function renderNetwork(area) {
+  area.innerHTML = `
+    <div class="stats-grid" id="networkStats">
+      <div class="stat-card"><div class="stat-icon blue">${iconNetwork()}</div><div class="stat-info"><h3 id="nOlts">-</h3><p>OLTs</p></div></div>
+      <div class="stat-card"><div class="stat-icon green">${iconCheck()}</div><div class="stat-info"><h3 id="nOnu">-</h3><p>ONU Stock</p></div></div>
+      <div class="stat-card"><div class="stat-icon orange">${iconTools()}</div><div class="stat-info"><h3 id="nRouter">-</h3><p>Router Stock</p></div></div>
+      <div class="stat-card"><div class="stat-icon purple">${iconNetwork()}</div><div class="stat-info"><h3 id="nSplitter">-</h3><p>Splitters</p></div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Add Network Item</h3>
+      </div>
+      <div class="form-row">
+        <div class="form-field"><label>Type</label>
+          <select id="netType">
+            <option value="olt">OLT</option>
+            <option value="onu">ONU Stock</option>
+            <option value="router">Router Stock</option>
+            <option value="splitter">Splitter</option>
+            <option value="cable">Fiber Cable</option>
+            <option value="junction">Junction Box</option>
+          </select>
+        </div>
+        <div class="form-field"><label>Name / Model</label><input id="netName" placeholder="e.g. Huawei MA5800" /></div>
+        <div class="form-field"><label>Quantity / Ports</label><input id="netQty" type="number" value="1" /></div>
+        <div class="form-field"><label>Location / Notes</label><input id="netLoc" placeholder="Site / Notes" /></div>
+      </div>
+      <button class="btn btn-primary" onclick="saveNetworkItem()">Add Item</button>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Network Inventory</h3>
+        <button class="btn btn-outline btn-sm" onclick="loadNetworkList()">Refresh</button>
+      </div>
+      <div id="networkList">Loading...</div>
+    </div>
+  `;
+  loadNetworkList();
 }
 
-function renderReports(area) {
-  area.innerHTML = `<div class="card"><div class="card-header"><h3 class="card-title">Reports</h3></div>
-    <p style="color:var(--text-muted);padding:20px;">Coming soon - Daily/Monthly Collection, Profit/Loss, Excel/PDF Export</p></div>`;
+async function saveNetworkItem() {
+  const data = {
+    type: document.getElementById("netType").value,
+    name: document.getElementById("netName").value.trim(),
+    qty: Number(document.getElementById("netQty").value) || 1,
+    location: document.getElementById("netLoc").value.trim(),
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    createdBy: user.uid
+  };
+  if (!data.name) { showToast("Name required", "error"); return; }
+
+  try {
+    await db.collection("network").add(data);
+    showToast("Item added", "success");
+    document.getElementById("netName").value = "";
+    document.getElementById("netLoc").value = "";
+    loadNetworkList();
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+}
+
+async function loadNetworkList() {
+  const el = document.getElementById("networkList");
+  if (!el) return;
+
+  try {
+    const snap = await db.collection("network").get();
+    let docs = [];
+    let counts = { olt: 0, onu: 0, router: 0, splitter: 0 };
+
+    snap.forEach(doc => {
+      const d = { id: doc.id, ...doc.data() };
+      docs.push(d);
+      if (counts[d.type] !== undefined) counts[d.type] += (d.qty || 1);
+    });
+
+    const nOlts = document.getElementById("nOlts");
+    const nOnu = document.getElementById("nOnu");
+    const nRouter = document.getElementById("nRouter");
+    const nSplitter = document.getElementById("nSplitter");
+    if (nOlts) nOlts.textContent = counts.olt;
+    if (nOnu) nOnu.textContent = counts.onu;
+    if (nRouter) nRouter.textContent = counts.router;
+    if (nSplitter) nSplitter.textContent = counts.splitter;
+
+    if (docs.length === 0) {
+      el.innerHTML = `<div class="empty-state"><p>No network items yet</p></div>`;
+      return;
+    }
+
+    let html = `<div class="table-wrapper"><table>
+      <thead><tr><th>Type</th><th>Name</th><th>Qty</th><th>Location</th><th>Action</th></tr></thead><tbody>`;
+    docs.forEach(d => {
+      html += `<tr>
+        <td>${(d.type || "").toUpperCase()}</td>
+        <td>${d.name || "-"}</td>
+        <td>${d.qty || 1}</td>
+        <td>${d.location || "-"}</td>
+        <td><button class="btn btn-sm btn-outline" onclick="deleteNetworkItem('${d.id}')">Del</button></td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<p style="color:var(--danger);padding:16px;">Error loading</p>`;
+  }
+}
+
+async function deleteNetworkItem(id) {
+  if (!confirm("Delete this item?")) return;
+  try {
+    await db.collection("network").doc(id).delete();
+    showToast("Deleted", "success");
+    loadNetworkList();
+  } catch (e) {
+    showToast("Error", "error");
+  }
+}
+
+/* ========== REPORTS MODULE ========== */
+async function renderReports(area) {
+  area.innerHTML = `
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Reports & Analytics</h3></div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;">
+        <button class="btn btn-outline" onclick="runReport('collection')">Monthly Collection</button>
+        <button class="btn btn-outline" onclick="runReport('pending')">Pending Bills</button>
+        <button class="btn btn-outline" onclick="runReport('customers')">Customer Summary</button>
+        <button class="btn btn-outline" onclick="runReport('complaints')">Complaint Report</button>
+        <button class="btn btn-primary" onclick="exportExcel()">Export Excel (CSV)</button>
+      </div>
+      <div id="reportResult"><p style="color:var(--text-muted);">Select a report above</p></div>
+    </div>
+  `;
+}
+
+async function runReport(type) {
+  const el = document.getElementById("reportResult");
+  el.innerHTML = `<p style="text-align:center;padding:20px;color:var(--text-muted);">Loading...</p>`;
+
+  try {
+    if (type === "collection") {
+      const snap = await db.collection("bills").get();
+      const byMonth = {};
+      snap.forEach(doc => {
+        const d = doc.data();
+        if (d.status !== "paid") return;
+        const m = d.month || "unknown";
+        byMonth[m] = (byMonth[m] || 0) + (d.amount || 0);
+      });
+      let html = `<h3 style="margin-bottom:12px;">Monthly Collection</h3><div class="table-wrapper"><table>
+        <thead><tr><th>Month</th><th>Amount</th></tr></thead><tbody>`;
+      Object.keys(byMonth).sort().reverse().forEach(m => {
+        html += `<tr><td>${m}</td><td>₨ ${byMonth[m].toLocaleString()}</td></tr>`;
+      });
+      html += `</tbody></table></div>`;
+      el.innerHTML = html;
+    }
+
+    if (type === "pending") {
+      const snap = await db.collection("bills").get();
+      let html = `<h3 style="margin-bottom:12px;">Pending Bills</h3><div class="table-wrapper"><table>
+        <thead><tr><th>Customer</th><th>Month</th><th>Amount</th><th>Phone</th></tr></thead><tbody>`;
+      let total = 0;
+      snap.forEach(doc => {
+        const d = doc.data();
+        if (d.status !== "pending") return;
+        total += d.amount || 0;
+        html += `<tr><td>${d.customerName}</td><td>${d.month}</td><td>₨ ${d.amount}</td><td>${d.customerPhone || ""}</td></tr>`;
+      });
+      html += `</tbody></table></div><p style="margin-top:12px;font-weight:700;">Total Pending: ₨ ${total.toLocaleString()}</p>`;
+      el.innerHTML = html;
+    }
+
+    if (type === "customers") {
+      const snap = await db.collection("customers").get();
+      let active = 0, suspended = 0;
+      snap.forEach(doc => {
+        const s = doc.data().status;
+        if (s === "suspended") suspended++; else active++;
+      });
+      el.innerHTML = `
+        <h3 style="margin-bottom:12px;">Customer Summary</h3>
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-icon blue">${iconUsers()}</div><div class="stat-info"><h3>${snap.size}</h3><p>Total</p></div></div>
+          <div class="stat-card"><div class="stat-icon green">${iconCheck()}</div><div class="stat-info"><h3>${active}</h3><p>Active</p></div></div>
+          <div class="stat-card"><div class="stat-icon red">${iconSuspend()}</div><div class="stat-info"><h3>${suspended}</h3><p>Suspended</p></div></div>
+        </div>`;
+    }
+
+    if (type === "complaints") {
+      const snap = await db.collection("complaints").get();
+      let pending = 0, progress = 0, resolved = 0;
+      snap.forEach(doc => {
+        const s = doc.data().status;
+        if (s === "pending") pending++;
+        else if (s === "in_progress") progress++;
+        else if (s === "resolved") resolved++;
+      });
+      el.innerHTML = `
+        <h3 style="margin-bottom:12px;">Complaint Report</h3>
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-icon purple">${iconComplaint()}</div><div class="stat-info"><h3>${snap.size}</h3><p>Total</p></div></div>
+          <div class="stat-card"><div class="stat-icon orange">${iconComplaint()}</div><div class="stat-info"><h3>${pending}</h3><p>Pending</p></div></div>
+          <div class="stat-card"><div class="stat-icon blue">${iconComplaint()}</div><div class="stat-info"><h3>${progress}</h3><p>In Progress</p></div></div>
+          <div class="stat-card"><div class="stat-icon green">${iconCheck()}</div><div class="stat-info"><h3>${resolved}</h3><p>Resolved</p></div></div>
+        </div>`;
+    }
+  } catch (e) {
+    el.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
+  }
+}
+
+async function exportExcel() {
+  try {
+    const snap = await db.collection("bills").get();
+    let csv = "Customer,Phone,Month,Amount,Method,Status\n";
+    snap.forEach(doc => {
+      const d = doc.data();
+      csv += `"${d.customerName || ""}","${d.customerPhone || ""}","${d.month || ""}",${d.amount || 0},"${d.method || ""}","${d.status || ""}"\n`;
+    });
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "fiberhub-bills-" + new Date().toISOString().slice(0, 10) + ".csv";
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("CSV downloaded", "success");
+  } catch (e) {
+    showToast("Export failed", "error");
+  }
 }
 
 function renderSettings(area) {
   area.innerHTML = `<div class="card"><div class="card-header"><h3 class="card-title">Settings</h3></div>
-    <p style="color:var(--text-muted);padding:20px;">Coming soon - Packages, Areas, SMS/WhatsApp Templates, Company Details</p></div>`;
+    <p style="color:var(--text-muted);padding:20px;">Packages, Areas, SMS/WhatsApp Templates, Company Details — next update</p></div>`;
 }
 
-function renderTechnician(area) {
+/* ========== TECHNICIAN PANEL ========== */
+async function renderTechnician(area) {
   area.innerHTML = `
     <div class="card">
-      <div class="card-header"><h3 class="card-title">My Assigned Jobs</h3></div>
-      <p style="color:var(--text-muted);padding:12px;">Complaints assigned to you will appear here. Go to <strong>Complaints</strong> to see all open tickets.</p>
+      <div class="card-header">
+        <h3 class="card-title">My Assigned / Open Jobs</h3>
+        <button class="btn btn-outline btn-sm" onclick="loadTechJobs()">Refresh</button>
+      </div>
+      <div id="techJobsList">Loading...</div>
     </div>
   `;
+  loadTechJobs();
+}
+
+async function loadTechJobs() {
+  const el = document.getElementById("techJobsList");
+  if (!el) return;
+
+  try {
+    const snap = await db.collection("complaints").get();
+    let docs = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      // Show pending, in_progress, or assigned to this tech
+      if (d.status === "pending" || d.status === "in_progress" || d.technicianId === user.uid) {
+        docs.push({ id: doc.id, ...d });
+      }
+    });
+    docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+    if (docs.length === 0) {
+      el.innerHTML = `<div class="empty-state"><p>No open jobs right now</p></div>`;
+      return;
+    }
+
+    let html = `<div class="table-wrapper"><table>
+      <thead><tr><th>ID</th><th>Customer</th><th>Issue</th><th>Phone</th><th>Status</th><th>Action</th></tr></thead><tbody>`;
+    docs.forEach(d => {
+      html += `<tr>
+        <td>${d.id.slice(0, 8)}</td>
+        <td>${d.customerName || "-"}</td>
+        <td>${d.issue || "-"}</td>
+        <td>${d.customerPhone || "-"}</td>
+        <td><span class="status ${statusClass(d.status)}">${statusLabel(d.status)}</span></td>
+        <td>
+          <button class="btn btn-sm btn-outline" onclick="viewComplaint('${d.id}')">View</button>
+          ${d.status !== "resolved" ? `<button class="btn btn-sm btn-primary" onclick="techUpdateJob('${d.id}')">Update</button>` : ""}
+        </td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<p style="color:var(--danger);padding:16px;">Error loading jobs</p>`;
+  }
+}
+
+async function techUpdateJob(id) {
+  const choice = prompt("Update status:\n1 = Start (In Progress)\n2 = Resolved\n\nType 1 or 2:");
+  if (!choice) return;
+  const status = choice === "1" ? "in_progress" : choice === "2" ? "resolved" : null;
+  if (!status) { showToast("Invalid", "error"); return; }
+
+  const note = prompt("Add note (optional):") || "";
+
+  try {
+    await db.collection("complaints").doc(id).update({
+      status,
+      technicianId: user.uid,
+      technicianName: user.name,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      notes: firebase.firestore.FieldValue.arrayUnion({
+        text: note || `Status → ${statusLabel(status)}`,
+        by: user.name,
+        at: Date.now()
+      })
+    });
+    showToast("Job updated", "success");
+    loadTechJobs();
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
 }
 
 function renderMyBills(area) {
@@ -835,6 +1587,12 @@ function iconCheck() {
 }
 function iconSuspend() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>`;
+}
+function iconMoney() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`;
+}
+function iconBill() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`;
 }
 
 async function loadVersion() {
