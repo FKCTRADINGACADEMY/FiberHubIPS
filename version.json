@@ -1,1 +1,1 @@
-{"version":"1.8.4","buildDate":"2026-08-20","notes":"PWA auto-update every 3s + version sync, Packages CRUD in Settings, packages load in customer form"}
+{"version":"1.8.5","buildDate":"2026-08-20","notes":"Areas CRUD, Late Fee settings + apply on bills, Bill History per customer, print shows late fee. Photo skipped (1MB safe)."}
