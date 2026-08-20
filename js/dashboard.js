@@ -209,11 +209,11 @@ function loadModule(name) {
 
 /* ========== DASHBOARD ========== */
 async function renderDashboard(area) {
-  // Instant shell – no long full-page loading
   const now = new Date();
   const u = getCurrentUser() || user || {};
   const greet = now.getHours() < 12 ? "Good Morning" : now.getHours() < 17 ? "Good Afternoon" : "Good Evening";
   const dateStr = now.toLocaleDateString("en-PK", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  const currentMonth = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
 
   area.innerHTML = `
     <div class="dash-hero">
@@ -223,37 +223,53 @@ async function renderDashboard(area) {
       </div>
       <div class="dash-hero-actions">
         <button class="btn btn-primary btn-sm" onclick="loadModule('customers')">+ Customer</button>
-        <button class="btn btn-outline btn-sm" onclick="loadModule('complaints')">Complaints</button>
         <button class="btn btn-outline btn-sm" onclick="loadModule('billing')">Billing</button>
+        <button class="btn btn-outline btn-sm" onclick="loadModule('reports')">Accounts</button>
       </div>
     </div>
+
+    <!-- Quick Actions TOP -->
+    <div class="card dash-card" style="margin-bottom:14px;">
+      <div class="card-header"><h3 class="card-title">⚡ Quick Actions</h3></div>
+      <div class="quick-actions">
+        <button type="button" class="qa-btn" onclick="loadModule('customers')"><span>👥</span><span class="qa-label">Customers</span></button>
+        <button type="button" class="qa-btn" onclick="loadModule('billing')"><span>💵</span><span class="qa-label">Billing</span></button>
+        <button type="button" class="qa-btn" onclick="loadModule('complaints')"><span>🛠</span><span class="qa-label">Complaints</span></button>
+        <button type="button" class="qa-btn" onclick="loadModule('reports')"><span>📊</span><span class="qa-label">Accounts</span></button>
+        <button type="button" class="qa-btn" onclick="loadModule('network')"><span>🌐</span><span class="qa-label">Network</span></button>
+        <button type="button" class="qa-btn" onclick="loadModule('settings')"><span>⚙️</span><span class="qa-label">Settings</span></button>
+        <button type="button" class="qa-btn qa-warn" onclick="sendDueReminders()"><span>📱</span><span class="qa-label">Due Reminders</span></button>
+        <button type="button" class="qa-btn" onclick="loadModule('users')"><span>🔐</span><span class="qa-label">Users</span></button>
+      </div>
+    </div>
+
+    <!-- This month hisab -->
+    <div class="card dash-card">
+      <div class="card-header">
+        <h3 class="card-title">📒 This Month Hisab (${currentMonth})</h3>
+        <button class="btn btn-outline btn-sm" onclick="loadModule('reports')">Full Accounts</button>
+      </div>
+      <div class="stats-grid" id="dashAccounts" style="margin-bottom:0;">
+        <div class="stat-card stat-modern accent-teal"><div class="stat-icon green">${iconBill()}</div><div class="stat-info"><h3>…</h3><p>Recovery (Paid)</p></div></div>
+        <div class="stat-card stat-modern accent-orange"><div class="stat-icon orange">${iconBilling()}</div><div class="stat-info"><h3>…</h3><p>Pending Recovery</p></div></div>
+        <div class="stat-card stat-modern accent-purple"><div class="stat-icon purple">${iconUsers()}</div><div class="stat-info"><h3>…</h3><p>Staff Salary</p></div></div>
+        <div class="stat-card stat-modern accent-red"><div class="stat-icon red">${iconTools()}</div><div class="stat-info"><h3>…</h3><p>Office Expense</p></div></div>
+        <div class="stat-card stat-modern accent-green"><div class="stat-icon green">${iconCheck()}</div><div class="stat-info"><h3>…</h3><p>Net Profit</p></div></div>
+      </div>
+    </div>
+
     <div class="stats-grid dash-stats" id="dashStats">
       <div class="stat-card stat-modern accent-blue stat-click" onclick="loadModule('customers')"><div class="stat-icon blue">${iconUsers()}</div><div class="stat-info"><h3>…</h3><p>Total Customers</p></div></div>
       <div class="stat-card stat-modern accent-green stat-click" onclick="loadModule('customers')"><div class="stat-icon green">${iconCheck()}</div><div class="stat-info"><h3>…</h3><p>Active</p></div></div>
       <div class="stat-card stat-modern accent-red stat-click" onclick="loadModule('customers')"><div class="stat-icon red">${iconSuspend()}</div><div class="stat-info"><h3>…</h3><p>Suspended</p></div></div>
-      <div class="stat-card stat-modern accent-teal stat-click" onclick="loadModule('billing')"><div class="stat-icon green">${iconBill()}</div><div class="stat-info"><h3>…</h3><p>Monthly Income</p></div></div>
-      <div class="stat-card stat-modern accent-orange stat-click" onclick="loadModule('billing')"><div class="stat-icon orange">${iconBilling()}</div><div class="stat-info"><h3>…</h3><p>Pending Bills</p></div></div>
       <div class="stat-card stat-modern accent-purple stat-click" onclick="loadModule('complaints')"><div class="stat-icon purple">${iconComplaint()}</div><div class="stat-info"><h3>…</h3><p>Open Complaints</p></div></div>
     </div>
-    <div class="dash-grid-2">
-      <div class="card dash-card">
-        <div class="card-header"><h3 class="card-title">📈 Revenue (6 months)</h3></div>
-        <div class="revenue-chart" id="dashRevenueChart"><p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p></div>
-      </div>
-      <div class="card dash-card">
-        <div class="card-header"><h3 class="card-title">⚡ Quick Actions</h3></div>
-        <div class="quick-actions">
-          <button type="button" class="qa-btn" onclick="loadModule('customers')"><span>👥</span><span class="qa-label">Customers</span></button>
-          <button type="button" class="qa-btn" onclick="loadModule('billing')"><span>💵</span><span class="qa-label">Billing</span></button>
-          <button type="button" class="qa-btn" onclick="loadModule('complaints')"><span>🛠</span><span class="qa-label">Complaints</span></button>
-          <button type="button" class="qa-btn" onclick="loadModule('reports')"><span>📊</span><span class="qa-label">Reports</span></button>
-          <button type="button" class="qa-btn" onclick="loadModule('network')"><span>🌐</span><span class="qa-label">Network</span></button>
-          <button type="button" class="qa-btn" onclick="loadModule('settings')"><span>⚙️</span><span class="qa-label">Settings</span></button>
-          <button type="button" class="qa-btn qa-warn" onclick="sendDueReminders()"><span>📱</span><span class="qa-label">Due Reminders</span></button>
-          <button type="button" class="qa-btn" onclick="loadModule('users')"><span>🔐</span><span class="qa-label">Users</span></button>
-        </div>
-      </div>
+
+    <div class="card dash-card">
+      <div class="card-header"><h3 class="card-title">📈 Revenue (6 months)</h3></div>
+      <div class="revenue-chart" id="dashRevenueChart"><p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p></div>
     </div>
+
     <div class="card dash-card">
       <div class="card-header">
         <h3 class="card-title">Recent Complaints</h3>
@@ -263,20 +279,20 @@ async function renderDashboard(area) {
     </div>
   `;
 
-  // Parallel data load (fast)
   loadRecentComplaints();
-  const currentMonth = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
   const monthTotals = {};
 
-  const [custRes, compRes, billRes] = await Promise.allSettled([
+  const [custRes, compRes, billRes, expRes] = await Promise.allSettled([
     db.collection("customers").get(),
     db.collection("complaints").get(),
-    db.collection("bills").get()
+    db.collection("bills").get(),
+    db.collection("expenses").get()
   ]);
 
   let totalCustomers = 0, activeCustomers = 0, suspendedCustomers = 0;
   let openComplaints = 0, pendingComplaints = 0;
   let pendingBillsCount = 0, pendingBillsAmount = 0, monthlyIncome = 0;
+  let salaryMonth = 0, officeMonth = 0, otherExpMonth = 0;
 
   if (custRes.status === "fulfilled") {
     totalCustomers = custRes.value.size;
@@ -296,17 +312,56 @@ async function renderDashboard(area) {
   if (billRes.status === "fulfilled") {
     billRes.value.forEach(doc => {
       const b = doc.data();
-      const amt = Number(b.amount) || 0;
-      const late = Number(b.lateFee) || 0;
+      const amt = (Number(b.amount) || 0) + (Number(b.lateFee) || 0);
       if (b.status === "pending") {
         pendingBillsCount++;
-        pendingBillsAmount += amt + late;
+        pendingBillsAmount += amt;
       }
       if (b.status === "paid" && b.month) {
-        monthTotals[b.month] = (monthTotals[b.month] || 0) + amt + late;
-        if (b.month === currentMonth) monthlyIncome += amt + late;
+        monthTotals[b.month] = (monthTotals[b.month] || 0) + amt;
+        if (b.month === currentMonth) monthlyIncome += amt;
       }
     });
+  }
+  if (expRes.status === "fulfilled") {
+    expRes.value.forEach(doc => {
+      const e = doc.data();
+      const amt = Number(e.amount) || 0;
+      const d = String(e.date || "");
+      const inMonth = d.startsWith(currentMonth) || (e.month === currentMonth);
+      if (!inMonth) return;
+      if (e.category === "salary") salaryMonth += amt;
+      else if (e.category === "office" || e.category === "ops") officeMonth += amt;
+      else otherExpMonth += amt;
+    });
+  }
+
+  const totalExpenseMonth = salaryMonth + officeMonth + otherExpMonth;
+  const netProfit = monthlyIncome - totalExpenseMonth;
+
+  const accEl = document.getElementById("dashAccounts");
+  if (accEl) {
+    accEl.innerHTML = `
+      <div class="stat-card stat-modern accent-teal stat-click" onclick="loadModule('billing')">
+        <div class="stat-icon green">${iconBill()}</div>
+        <div class="stat-info"><h3>₨ ${monthlyIncome.toLocaleString()}</h3><p>Recovery (Paid)</p></div>
+      </div>
+      <div class="stat-card stat-modern accent-orange stat-click" onclick="loadModule('billing')">
+        <div class="stat-icon orange">${iconBilling()}</div>
+        <div class="stat-info"><h3>₨ ${pendingBillsAmount.toLocaleString()}</h3><p>Pending Recovery (${pendingBillsCount})</p></div>
+      </div>
+      <div class="stat-card stat-modern accent-purple stat-click" onclick="loadModule('reports')">
+        <div class="stat-icon purple">${iconUsers()}</div>
+        <div class="stat-info"><h3>₨ ${salaryMonth.toLocaleString()}</h3><p>Staff Salary</p></div>
+      </div>
+      <div class="stat-card stat-modern accent-red stat-click" onclick="loadModule('reports')">
+        <div class="stat-icon red">${iconTools()}</div>
+        <div class="stat-info"><h3>₨ ${(officeMonth + otherExpMonth).toLocaleString()}</h3><p>Office + Other</p></div>
+      </div>
+      <div class="stat-card stat-modern ${netProfit >= 0 ? "accent-green" : "accent-red"} stat-click" onclick="loadModule('reports')">
+        <div class="stat-icon ${netProfit >= 0 ? "green" : "red"}">${iconCheck()}</div>
+        <div class="stat-info"><h3>₨ ${netProfit.toLocaleString()}</h3><p>Net Profit (Is Mahine)</p></div>
+      </div>`;
   }
 
   const statsEl = document.getElementById("dashStats");
@@ -323,14 +378,6 @@ async function renderDashboard(area) {
       <div class="stat-card stat-modern accent-red stat-click" onclick="loadModule('customers')">
         <div class="stat-icon red">${iconSuspend()}</div>
         <div class="stat-info"><h3>${suspendedCustomers}</h3><p>Suspended</p></div>
-      </div>
-      <div class="stat-card stat-modern accent-teal stat-click" onclick="loadModule('billing')">
-        <div class="stat-icon green">${iconBill()}</div>
-        <div class="stat-info"><h3>₨ ${monthlyIncome.toLocaleString()}</h3><p>Monthly Income</p></div>
-      </div>
-      <div class="stat-card stat-modern accent-orange stat-click" onclick="loadModule('billing')">
-        <div class="stat-icon orange">${iconBilling()}</div>
-        <div class="stat-info"><h3>${pendingBillsCount}</h3><p>Pending · ₨ ${pendingBillsAmount.toLocaleString()}</p></div>
       </div>
       <div class="stat-card stat-modern accent-purple stat-click" onclick="loadModule('complaints')">
         <div class="stat-icon purple">${iconComplaint()}</div>
@@ -2637,31 +2684,34 @@ async function renderReports(area) {
     <div class="card">
       <div class="card-header"><h3 class="card-title">Reports & Analytics</h3></div>
       <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;">
-        <button class="btn btn-outline" onclick="runReport('collection')">Monthly Collection</button>
-        <button class="btn btn-outline" onclick="runReport('pending')">Pending Bills</button>
-        <button class="btn btn-outline" onclick="runReport('customers')">Customer Summary</button>
-        <button class="btn btn-outline" onclick="runReport('complaints')">Complaint Report</button>
+        <button class="btn btn-outline" onclick="runReport('collection')">Monthly Recovery</button>
+        <button class="btn btn-outline" onclick="runReport('pending')">Pending Recovery</button>
+        <button class="btn btn-outline" onclick="runReport('hisab')">Full Hisab (Month)</button>
         <button class="btn btn-outline" onclick="runReport('profit')">Profit / Loss</button>
-        <button class="btn btn-primary" onclick="exportExcel()">Export Excel (CSV)</button>
+        <button class="btn btn-outline" onclick="runReport('customers')">Customers</button>
+        <button class="btn btn-outline" onclick="runReport('complaints')">Complaints</button>
+        <button class="btn btn-primary" onclick="exportExcel()">Export CSV</button>
       </div>
       <div id="reportResult"><p style="color:var(--text-muted);">Select a report above</p></div>
     </div>
     <div class="card">
-      <div class="card-header"><h3 class="card-title">Expenses</h3></div>
+      <div class="card-header"><h3 class="card-title">Staff Salary + Office Kharcha</h3></div>
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px;">Salary = staff tankhwah · Office = rent/bill/fuel · Stock = cable/ONU</p>
       <div class="form-row">
-        <div class="form-field"><label>Title</label><input id="expTitle" placeholder="e.g. Fiber cable / Fuel" /></div>
+        <div class="form-field"><label>Title / Staff name</label><input id="expTitle" placeholder="e.g. Ali salary / Office rent" /></div>
         <div class="form-field"><label>Amount (₨)</label><input id="expAmount" type="number" placeholder="0" /></div>
         <div class="form-field"><label>Category</label>
           <select id="expCat">
-            <option value="ops">Operations</option>
+            <option value="salary">Staff Salary</option>
+            <option value="office">Office Kharcha</option>
+            <option value="ops">Operations / Fuel</option>
             <option value="stock">Stock / Hardware</option>
-            <option value="salary">Salary</option>
             <option value="other">Other</option>
           </select>
         </div>
         <div class="form-field"><label>Date</label><input id="expDate" type="date" /></div>
       </div>
-      <button class="btn btn-primary btn-sm" onclick="saveExpense()">Add Expense</button>
+      <button class="btn btn-primary btn-sm" onclick="saveExpense()">Add Entry</button>
       <div id="expensesList" style="margin-top:16px;">Loading...</div>
     </div>
   `;
@@ -2680,14 +2730,15 @@ async function saveExpense() {
     return;
   }
   try {
+    const month = date.slice(0, 7);
     await db.collection("expenses").add({
-      title, amount, category, date,
+      title, amount, category, date, month,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       createdBy: user.uid,
       byName: user.name || ""
     });
-    showToast("Expense added", "success");
-    logActivity("expense", "Expense: " + title + " ₨" + amount);
+    showToast("Entry saved", "success");
+    logActivity("expense", category + ": " + title + " ₨" + amount);
     document.getElementById("expTitle").value = "";
     document.getElementById("expAmount").value = "";
     loadExpensesList();
@@ -2813,24 +2864,58 @@ async function runReport(type) {
         </div>`;
     }
 
-    if (type === "profit") {
+    if (type === "profit" || type === "hisab") {
+      const now = new Date();
+      const currentMonth = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
       const [billSnap, expSnap] = await Promise.all([
         db.collection("bills").get(),
         db.collection("expenses").get()
       ]);
-      let income = 0, expense = 0;
+      let recovery = 0, pendingRec = 0, allIncome = 0, allExpense = 0;
+      let salary = 0, office = 0, ops = 0, stock = 0, other = 0;
+      let salaryAll = 0, officeAll = 0;
+
       billSnap.forEach(doc => {
         const d = doc.data();
-        if (d.status === "paid") income += (Number(d.amount) || 0) + (Number(d.lateFee) || 0);
+        const amt = (Number(d.amount) || 0) + (Number(d.lateFee) || 0);
+        if (d.status === "paid") {
+          allIncome += amt;
+          if (d.month === currentMonth) recovery += amt;
+        }
+        if (d.status === "pending") pendingRec += amt;
       });
-      expSnap.forEach(doc => { expense += Number(doc.data().amount) || 0; });
-      const profit = income - expense;
+
+      expSnap.forEach(doc => {
+        const e = doc.data();
+        const amt = Number(e.amount) || 0;
+        allExpense += amt;
+        const inMonth = String(e.date || "").startsWith(currentMonth) || e.month === currentMonth;
+        const cat = e.category || "other";
+        if (cat === "salary") { salaryAll += amt; if (inMonth) salary += amt; }
+        else if (cat === "office") { officeAll += amt; if (inMonth) office += amt; }
+        else if (cat === "ops") { if (inMonth) ops += amt; }
+        else if (cat === "stock") { if (inMonth) stock += amt; }
+        else { if (inMonth) other += amt; }
+      });
+
+      const monthExp = salary + office + ops + stock + other;
+      const monthProfit = recovery - monthExp;
+      const allProfit = allIncome - allExpense;
+
       el.innerHTML = `
-        <h3 style="margin-bottom:12px;">Profit / Loss</h3>
+        <h3 style="margin-bottom:12px;">Full Hisab · ${currentMonth}</h3>
         <div class="stats-grid">
-          <div class="stat-card stat-modern accent-green"><div class="stat-icon green">${iconBill()}</div><div class="stat-info"><h3>₨ ${income.toLocaleString()}</h3><p>Total Income (paid)</p></div></div>
-          <div class="stat-card stat-modern accent-orange"><div class="stat-icon orange">${iconBilling()}</div><div class="stat-info"><h3>₨ ${expense.toLocaleString()}</h3><p>Total Expenses</p></div></div>
-          <div class="stat-card stat-modern ${profit >= 0 ? "accent-teal" : "accent-red"}"><div class="stat-icon ${profit >= 0 ? "green" : "red"}">${iconCheck()}</div><div class="stat-info"><h3>₨ ${profit.toLocaleString()}</h3><p>${profit >= 0 ? "Profit" : "Loss"}</p></div></div>
+          <div class="stat-card stat-modern accent-teal"><div class="stat-icon green">${iconBill()}</div><div class="stat-info"><h3>₨ ${recovery.toLocaleString()}</h3><p>Is mahine Recovery</p></div></div>
+          <div class="stat-card stat-modern accent-orange"><div class="stat-icon orange">${iconBilling()}</div><div class="stat-info"><h3>₨ ${pendingRec.toLocaleString()}</h3><p>Pending Recovery</p></div></div>
+          <div class="stat-card stat-modern accent-purple"><div class="stat-icon purple">${iconUsers()}</div><div class="stat-info"><h3>₨ ${salary.toLocaleString()}</h3><p>Staff Salary</p></div></div>
+          <div class="stat-card stat-modern accent-red"><div class="stat-icon red">${iconTools()}</div><div class="stat-info"><h3>₨ ${(office + ops + stock + other).toLocaleString()}</h3><p>Office + Ops + Stock</p></div></div>
+          <div class="stat-card stat-modern ${monthProfit >= 0 ? "accent-green" : "accent-red"}"><div class="stat-icon ${monthProfit >= 0 ? "green" : "red"}">${iconCheck()}</div><div class="stat-info"><h3>₨ ${monthProfit.toLocaleString()}</h3><p>Is mahine Profit</p></div></div>
+        </div>
+        <div style="margin-top:16px;padding:12px;background:var(--bg-main);border-radius:12px;font-size:0.9rem;">
+          <strong>Is mahine breakdown</strong><br>
+          Salary: ₨ ${salary.toLocaleString()} · Office: ₨ ${office.toLocaleString()} · Ops: ₨ ${ops.toLocaleString()} · Stock: ₨ ${stock.toLocaleString()} · Other: ₨ ${other.toLocaleString()}
+          <br><br>
+          <strong>All-time:</strong> Income ₨ ${allIncome.toLocaleString()} − Expense ₨ ${allExpense.toLocaleString()} = <strong>₨ ${allProfit.toLocaleString()}</strong>
         </div>`;
     }
   } catch (e) {
