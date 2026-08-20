@@ -2439,11 +2439,103 @@ async function renderReports(area) {
         <button class="btn btn-outline" onclick="runReport('pending')">Pending Bills</button>
         <button class="btn btn-outline" onclick="runReport('customers')">Customer Summary</button>
         <button class="btn btn-outline" onclick="runReport('complaints')">Complaint Report</button>
+        <button class="btn btn-outline" onclick="runReport('profit')">Profit / Loss</button>
         <button class="btn btn-primary" onclick="exportExcel()">Export Excel (CSV)</button>
       </div>
       <div id="reportResult"><p style="color:var(--text-muted);">Select a report above</p></div>
     </div>
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Expenses</h3></div>
+      <div class="form-row">
+        <div class="form-field"><label>Title</label><input id="expTitle" placeholder="e.g. Fiber cable / Fuel" /></div>
+        <div class="form-field"><label>Amount (₨)</label><input id="expAmount" type="number" placeholder="0" /></div>
+        <div class="form-field"><label>Category</label>
+          <select id="expCat">
+            <option value="ops">Operations</option>
+            <option value="stock">Stock / Hardware</option>
+            <option value="salary">Salary</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-field"><label>Date</label><input id="expDate" type="date" /></div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="saveExpense()">Add Expense</button>
+      <div id="expensesList" style="margin-top:16px;">Loading...</div>
+    </div>
   `;
+  const ed = document.getElementById("expDate");
+  if (ed) ed.value = new Date().toISOString().slice(0, 10);
+  loadExpensesList();
+}
+
+async function saveExpense() {
+  const title = document.getElementById("expTitle").value.trim();
+  const amount = Number(document.getElementById("expAmount").value) || 0;
+  const category = document.getElementById("expCat").value;
+  const date = document.getElementById("expDate").value || new Date().toISOString().slice(0, 10);
+  if (!title || amount <= 0) {
+    showToast("Title aur amount required", "error");
+    return;
+  }
+  try {
+    await db.collection("expenses").add({
+      title, amount, category, date,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: user.uid,
+      byName: user.name || ""
+    });
+    showToast("Expense added", "success");
+    logActivity("expense", "Expense: " + title + " ₨" + amount);
+    document.getElementById("expTitle").value = "";
+    document.getElementById("expAmount").value = "";
+    loadExpensesList();
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+}
+
+async function loadExpensesList() {
+  const el = document.getElementById("expensesList");
+  if (!el) return;
+  try {
+    const snap = await db.collection("expenses").get();
+    let docs = [];
+    let total = 0;
+    snap.forEach(doc => {
+      const d = { id: doc.id, ...doc.data() };
+      docs.push(d);
+      total += Number(d.amount) || 0;
+    });
+    docs.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+    if (docs.length === 0) {
+      el.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;">No expenses yet</p>`;
+      return;
+    }
+    el.innerHTML = `<p style="margin-bottom:8px;font-weight:600;">Total: ₨ ${total.toLocaleString()}</p>
+      <div class="table-wrapper"><table>
+      <thead><tr><th>Date</th><th>Title</th><th>Cat</th><th>Amount</th><th></th></tr></thead><tbody>
+      ${docs.slice(0, 50).map(d => `<tr>
+        <td>${d.date || "-"}</td>
+        <td>${d.title || "-"}</td>
+        <td>${d.category || "-"}</td>
+        <td>₨ ${(Number(d.amount) || 0).toLocaleString()}</td>
+        <td><button class="btn btn-sm btn-outline" style="color:var(--danger);" onclick="deleteExpense('${d.id}')">Del</button></td>
+      </tr>`).join("")}
+      </tbody></table></div>`;
+  } catch (e) {
+    el.innerHTML = `<p style="color:var(--danger);">Load error</p>`;
+  }
+}
+
+async function deleteExpense(id) {
+  if (!confirm("Delete expense?")) return;
+  try {
+    await db.collection("expenses").doc(id).delete();
+    showToast("Deleted", "success");
+    loadExpensesList();
+  } catch (e) {
+    showToast("Error", "error");
+  }
 }
 
 async function runReport(type) {
@@ -2516,6 +2608,27 @@ async function runReport(type) {
           <div class="stat-card"><div class="stat-icon orange">${iconComplaint()}</div><div class="stat-info"><h3>${pending}</h3><p>Pending</p></div></div>
           <div class="stat-card"><div class="stat-icon blue">${iconComplaint()}</div><div class="stat-info"><h3>${progress}</h3><p>In Progress</p></div></div>
           <div class="stat-card"><div class="stat-icon green">${iconCheck()}</div><div class="stat-info"><h3>${resolved}</h3><p>Resolved</p></div></div>
+        </div>`;
+    }
+
+    if (type === "profit") {
+      const [billSnap, expSnap] = await Promise.all([
+        db.collection("bills").get(),
+        db.collection("expenses").get()
+      ]);
+      let income = 0, expense = 0;
+      billSnap.forEach(doc => {
+        const d = doc.data();
+        if (d.status === "paid") income += (Number(d.amount) || 0) + (Number(d.lateFee) || 0);
+      });
+      expSnap.forEach(doc => { expense += Number(doc.data().amount) || 0; });
+      const profit = income - expense;
+      el.innerHTML = `
+        <h3 style="margin-bottom:12px;">Profit / Loss</h3>
+        <div class="stats-grid">
+          <div class="stat-card stat-modern accent-green"><div class="stat-icon green">${iconBill()}</div><div class="stat-info"><h3>₨ ${income.toLocaleString()}</h3><p>Total Income (paid)</p></div></div>
+          <div class="stat-card stat-modern accent-orange"><div class="stat-icon orange">${iconBilling()}</div><div class="stat-info"><h3>₨ ${expense.toLocaleString()}</h3><p>Total Expenses</p></div></div>
+          <div class="stat-card stat-modern ${profit >= 0 ? "accent-teal" : "accent-red"}"><div class="stat-icon ${profit >= 0 ? "green" : "red"}">${iconCheck()}</div><div class="stat-info"><h3>₨ ${profit.toLocaleString()}</h3><p>${profit >= 0 ? "Profit" : "Loss"}</p></div></div>
         </div>`;
     }
   } catch (e) {
