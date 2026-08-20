@@ -654,6 +654,7 @@ async function updateComplaintStatus(id) {
 
       document.querySelector(".modal-overlay")?.classList.remove("active");
       showToast("Status updated + Customer notified", "success");
+      logActivity("complaint", "Complaint " + id.slice(0, 8) + " → " + statusLabel(status));
       if (typeof loadComplaintsList === "function") loadComplaintsList();
       if (typeof loadRecentComplaints === "function") loadRecentComplaints();
     } catch (e) {
@@ -953,6 +954,7 @@ async function submitComplaint() {
 
     const ref = await db.collection("complaints").add(complaint);
     showToast("Complaint submitted successfully! ID: " + ref.id.slice(0, 8), "success");
+    logActivity("complaint", "New complaint submitted: " + issue + " (" + ref.id.slice(0, 8) + ")");
     
     hideNewComplaintForm();
     document.getElementById("complaintIssue").value = "";
@@ -1118,6 +1120,7 @@ async function saveCustomer() {
     if (id) {
       await db.collection("customers").doc(id).update(data);
       showToast("Customer updated", "success");
+      logActivity("customer", "Customer updated: " + data.name);
     } else {
       // New customer - create login if email + password given
       if (!data.email || !password) {
@@ -1148,6 +1151,7 @@ async function saveCustomer() {
       await db.collection("customers").add(data);
 
       showToast("Customer + Login created! Email: " + data.email + " | Password: " + password, "success");
+      logActivity("customer", "New customer created: " + data.name);
       alert("Customer Login Details:\n\nEmail: " + data.email + "\nPassword: " + password + "\n\nYe customer ko de dein.");
     }
     hideCustomerForm();
@@ -1322,6 +1326,7 @@ async function deleteCustomer(id) {
     // Note: Firebase Auth account itself cannot be fully deleted from client-side
     // without Admin SDK / Cloud Function. Users doc delete prevents login access via role check.
     showToast("Customer + login profile deleted", "success");
+    logActivity("customer", "Customer deleted: " + (data.name || id));
     loadCustomersList();
   } catch (e) {
     showToast("Delete failed: " + (e.message || ""), "error");
@@ -1647,6 +1652,7 @@ async function markPaid(id) {
       paidAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     showToast("Marked as paid", "success");
+    logActivity("billing", "Bill marked paid (" + id.slice(0, 8) + ") via " + m);
     loadBillsList();
     loadBillingStats();
   } catch (e) {
@@ -2208,6 +2214,45 @@ async function renderSettings(area) {
     </div>
 
     <div class="card">
+      <div class="card-header"><h3 class="card-title">WhatsApp / SMS Templates</h3></div>
+      <div class="form-field" style="margin-bottom:10px;">
+        <label>Bill Reminder Template</label>
+        <textarea id="tplBillReminder" rows="2" placeholder="Assalam o Alaikum {name}, aapka bill {month} – ₨{amount} pending hai. FiberHub ISP."></textarea>
+      </div>
+      <div class="form-field" style="margin-bottom:10px;">
+        <label>Complaint Update Template</label>
+        <textarea id="tplComplaint" rows="2" placeholder="Assalam o Alaikum {name}, aapki complaint ({issue}) – Status: {status}. FiberHub ISP."></textarea>
+      </div>
+      <div class="form-field" style="margin-bottom:10px;">
+        <label>Welcome / New Connection</label>
+        <textarea id="tplWelcome" rows="2" placeholder="Assalam o Alaikum {name}, FiberHub ISP mein khush amdeed. Package: {package}."></textarea>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="saveTemplates()">Save Templates</button>
+      <p style="font-size:0.75rem;color:var(--text-muted);margin-top:6px;">Variables: {name} {month} {amount} {issue} {status} {package} {phone}</p>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Backup / Export</h3></div>
+      <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:10px;">Firestore data JSON file mein download (documents limit safe)</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <button class="btn btn-outline btn-sm" onclick="exportCollection('customers')">Customers</button>
+        <button class="btn btn-outline btn-sm" onclick="exportCollection('bills')">Bills</button>
+        <button class="btn btn-outline btn-sm" onclick="exportCollection('complaints')">Complaints</button>
+        <button class="btn btn-outline btn-sm" onclick="exportCollection('packages')">Packages</button>
+        <button class="btn btn-outline btn-sm" onclick="exportCollection('areas')">Areas</button>
+        <button class="btn btn-primary btn-sm" onclick="exportAllBackup()">Full Backup</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Activity Logs</h3>
+        <button class="btn btn-outline btn-sm" onclick="loadActivityLogs()">Refresh</button>
+      </div>
+      <div id="activityLogsList" style="max-height:280px;overflow-y:auto;">Loading...</div>
+    </div>
+
+    <div class="card">
       <div class="card-header"><h3 class="card-title">Auto Suspend (Unpaid Bills)</h3></div>
       <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:12px;">Pending bills wale customers ko suspend karein</p>
       <button class="btn btn-outline" style="border-color:var(--danger);color:var(--danger);" onclick="runAutoSuspend()">Run Auto Suspend Now</button>
@@ -2218,6 +2263,8 @@ async function renderSettings(area) {
   loadPackagesList();
   loadAreasList();
   loadLateFeeSettings();
+  loadTemplates();
+  loadActivityLogs();
 }
 
 function showPackageForm(id, data) {
@@ -2460,8 +2507,149 @@ async function saveCompanySettings() {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
     showToast("Company settings saved", "success");
+    logActivity("settings", "Company settings updated");
   } catch (e) {
     showToast("Error: " + e.message, "error");
+  }
+}
+
+/* ========== Templates ========== */
+async function loadTemplates() {
+  try {
+    const doc = await db.collection("settings").doc("templates").get();
+    const d = doc.exists ? doc.data() : {};
+    const bill = document.getElementById("tplBillReminder");
+    const comp = document.getElementById("tplComplaint");
+    const wel = document.getElementById("tplWelcome");
+    if (bill) bill.value = d.billReminder || "Assalam o Alaikum {name}, aapka bill {month} – ₨{amount} pending hai. FiberHub ISP.";
+    if (comp) comp.value = d.complaint || "Assalam o Alaikum {name}, aapki complaint ({issue}) – Status: {status}. FiberHub ISP.";
+    if (wel) wel.value = d.welcome || "Assalam o Alaikum {name}, FiberHub ISP mein khush amdeed. Package: {package}.";
+  } catch (e) {}
+}
+async function saveTemplates() {
+  try {
+    await db.collection("settings").doc("templates").set({
+      billReminder: document.getElementById("tplBillReminder").value.trim(),
+      complaint: document.getElementById("tplComplaint").value.trim(),
+      welcome: document.getElementById("tplWelcome").value.trim(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    showToast("Templates saved", "success");
+    logActivity("settings", "WhatsApp/SMS templates updated");
+  } catch (e) { showToast("Error: " + e.message, "error"); }
+}
+function applyTemplate(tpl, vars) {
+  let s = tpl || "";
+  Object.keys(vars || {}).forEach(k => {
+    s = s.replace(new RegExp("\\{" + k + "\\}", "g"), vars[k] != null ? String(vars[k]) : "");
+  });
+  return s;
+}
+
+/* ========== Backup / Export ========== */
+async function exportCollection(name) {
+  try {
+    showToast("Exporting " + name + "...", "info");
+    const snap = await db.collection(name).get();
+    const rows = [];
+    snap.forEach(doc => rows.push({ id: doc.id, ...doc.data() }));
+    // Strip Firestore Timestamps to plain values for JSON
+    const clean = JSON.parse(JSON.stringify(rows, (k, v) => {
+      if (v && typeof v === "object" && v.seconds != null && v.nanoseconds != null) {
+        return new Date(v.seconds * 1000).toISOString();
+      }
+      return v;
+    }));
+    const blob = new Blob([JSON.stringify(clean, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `fiberhub-${name}-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast(name + " exported (" + clean.length + " records)", "success");
+    logActivity("backup", "Exported collection: " + name + " (" + clean.length + ")");
+  } catch (e) {
+    showToast("Export failed: " + e.message, "error");
+  }
+}
+async function exportAllBackup() {
+  try {
+    showToast("Full backup shuru...", "info");
+    const cols = ["customers", "bills", "complaints", "packages", "areas", "users", "network"];
+    const backup = { exportedAt: new Date().toISOString(), version: "1.8.6", data: {} };
+    for (const name of cols) {
+      try {
+        const snap = await db.collection(name).get();
+        const rows = [];
+        snap.forEach(doc => rows.push({ id: doc.id, ...doc.data() }));
+        backup.data[name] = JSON.parse(JSON.stringify(rows, (k, v) => {
+          if (v && typeof v === "object" && v.seconds != null && v.nanoseconds != null) {
+            return new Date(v.seconds * 1000).toISOString();
+          }
+          return v;
+        }));
+      } catch (e) {
+        backup.data[name] = [];
+      }
+    }
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `fiberhub-full-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast("Full backup downloaded", "success");
+    logActivity("backup", "Full backup exported");
+  } catch (e) {
+    showToast("Backup failed: " + e.message, "error");
+  }
+}
+
+/* ========== Activity Logs (small docs only) ========== */
+async function logActivity(type, message, meta) {
+  try {
+    if (!user) return;
+    await db.collection("activity_logs").add({
+      type: type || "info",
+      message: (message || "").slice(0, 300),
+      by: user.name || user.email || "System",
+      byUid: user.uid || "",
+      role: user.role || "",
+      meta: meta || null,
+      at: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (e) {
+    console.warn("logActivity:", e);
+  }
+}
+async function loadActivityLogs() {
+  const el = document.getElementById("activityLogsList");
+  if (!el) return;
+  try {
+    let snap;
+    try {
+      snap = await db.collection("activity_logs").orderBy("at", "desc").limit(40).get();
+    } catch (e) {
+      snap = await db.collection("activity_logs").limit(40).get();
+    }
+    if (snap.empty) {
+      el.innerHTML = `<p style="color:var(--text-muted);padding:8px;">No activity yet</p>`;
+      return;
+    }
+    let docs = [];
+    snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+    docs.sort((a, b) => (b.at?.seconds || 0) - (a.at?.seconds || 0));
+    el.innerHTML = docs.map(d => {
+      const t = d.at && d.at.toDate ? d.at.toDate().toLocaleString() : "-";
+      return `<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:0.85rem;">
+        <div><strong>${d.by || "System"}</strong> <span style="color:var(--text-muted);">(${d.role || "-"})</span>
+          <span style="float:right;color:var(--text-muted);font-size:0.75rem;">${t}</span>
+        </div>
+        <div style="color:var(--text-secondary);margin-top:2px;">${d.message || ""}</div>
+      </div>`;
+    }).join("");
+  } catch (e) {
+    el.innerHTML = `<p style="color:var(--danger);padding:8px;">Logs load error (index optional)</p>`;
   }
 }
 
