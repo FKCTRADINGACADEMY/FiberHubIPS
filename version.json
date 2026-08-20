@@ -1,5 +1,5 @@
 {
-  "version": "1.2.0",
+  "version": "1.3.0",
   "buildDate": "2026-08-20",
-  "notes": "Self-registration added. Auto user tracking. Real complaints with full customer details."
+  "notes": "Public register disabled. Only Admin creates users. User Management panel added."
 }
