@@ -432,12 +432,19 @@ async function viewComplaint(id) {
     const phone = d.customerPhone || "";
     const waMsg = `Assalam o Alaikum ${d.customerName || ""}, aapki complaint (${d.issue || ""}) – Status: ${statusLabel(d.status)}. FiberHub ISP.`;
 
+    const isStaff = user && user.role && user.role !== "customer";
+    const footerBtns = `
+      ${isStaff ? `<button class="btn btn-primary" onclick="document.querySelector('.modal-overlay').classList.remove('active'); updateComplaintStatus('${id}')">Update Status</button>` : ""}
+      ${phone && isStaff ? `<button class="btn btn-outline" style="color:#25D366;" onclick="openWhatsApp('${phone}', '${waMsg.replace(/'/g, "\\'")}')">WhatsApp</button>` : ""}
+      <button class="btn btn-outline" onclick="this.closest('.modal-overlay').classList.remove('active')">Close</button>
+    `;
+
     showModal("Complaint Details", `
       <div style="display:grid;gap:10px;">
         <div><strong>ID:</strong> ${id.slice(0, 12)}...</div>
         <div><strong>Customer:</strong> ${d.customerName || "-"} (${d.customerEmail || "-"})</div>
         <div><strong>Phone:</strong> ${phone || "-"}
-          ${phone ? `<button class="btn btn-sm btn-outline" style="margin-left:8px;color:#25D366;" onclick="openWhatsApp('${phone}', '${waMsg.replace(/'/g, "\\'")}')">WhatsApp</button>` : ""}
+          ${phone && isStaff ? `<button class="btn btn-sm btn-outline" style="margin-left:8px;color:#25D366;" onclick="openWhatsApp('${phone}', '${waMsg.replace(/'/g, "\\'")}')">WhatsApp</button>` : ""}
         </div>
         ${extraCustomer}
         <div><strong>Issue:</strong> ${d.issue}</div>
@@ -447,11 +454,7 @@ async function viewComplaint(id) {
         <div><strong>Created:</strong> ${date}</div>
         <div><strong>Notes / Updates:</strong>${notes}</div>
       </div>
-    `, `
-      <button class="btn btn-primary" onclick="document.querySelector('.modal-overlay').classList.remove('active'); updateComplaintStatus('${id}')">Update Status</button>
-      ${phone ? `<button class="btn btn-outline" style="color:#25D366;" onclick="openWhatsApp('${phone}', '${waMsg.replace(/'/g, "\\'")}')">WhatsApp</button>` : ""}
-      <button class="btn btn-outline" onclick="this.closest('.modal-overlay').classList.remove('active')">Close</button>
-    `);
+    `, footerBtns);
   } catch (e) {
     console.error(e);
     showToast("Error loading complaint", "error");
@@ -459,16 +462,23 @@ async function viewComplaint(id) {
 }
 
 async function updateComplaintStatus(id) {
-  // Better modal instead of prompts
+  // Quick status buttons + notes (Progress / Pending / Resolved)
   const body = `
     <div style="display:grid;gap:14px;">
       <div class="form-field">
-        <label>New Status *</label>
-        <select id="updStatus" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);">
-          <option value="pending">Pending</option>
-          <option value="in_progress">In Progress</option>
-          <option value="resolved">Resolved</option>
-        </select>
+        <label>Select Status *</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:6px;">
+          <button type="button" class="btn btn-outline status-btn" data-status="pending" style="padding:12px 8px;font-size:0.85rem;">
+            ⏳ Pending
+          </button>
+          <button type="button" class="btn btn-outline status-btn" data-status="in_progress" style="padding:12px 8px;font-size:0.85rem;">
+            🔧 In Progress
+          </button>
+          <button type="button" class="btn btn-outline status-btn" data-status="resolved" style="padding:12px 8px;font-size:0.85rem;">
+            ✅ Resolved
+          </button>
+        </div>
+        <input type="hidden" id="updStatus" value="in_progress" />
       </div>
       <div class="form-field">
         <label>Technician Name (optional)</label>
@@ -476,10 +486,10 @@ async function updateComplaintStatus(id) {
       </div>
       <div class="form-field">
         <label>Note / Response for Customer *</label>
-        <textarea id="updNote" rows="3" placeholder="Customer ko kya message jaye..." style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);"></textarea>
+        <textarea id="updNote" rows="3" placeholder="Customer ko kya message jaye... (e.g. Team visit kar rahi hai, 2 ghante mein theek ho jayega)" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);"></textarea>
       </div>
       <div style="font-size:0.85em;color:var(--text-muted);">
-        Status change ke baad customer ko in-app notification chali jayegi.
+        Status change + note ke baad customer ko in-app notification chali jayegi. Complaint customer ke "My Complaints" se nahi gayab hogi.
       </div>
     </div>
   `;
@@ -488,10 +498,38 @@ async function updateComplaintStatus(id) {
     <button class="btn btn-outline" onclick="this.closest('.modal-overlay').classList.remove('active')">Cancel</button>
   `);
 
+  // Quick status button selection
+  const statusBtns = document.querySelectorAll(".status-btn");
+  const statusInput = document.getElementById("updStatus");
+  statusBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      statusBtns.forEach(b => {
+        b.classList.remove("btn-primary");
+        b.classList.add("btn-outline");
+        b.style.borderColor = "";
+        b.style.background = "";
+      });
+      btn.classList.remove("btn-outline");
+      btn.classList.add("btn-primary");
+      statusInput.value = btn.dataset.status;
+    });
+  });
+  // Default highlight In Progress
+  const defaultBtn = document.querySelector('.status-btn[data-status="in_progress"]');
+  if (defaultBtn) {
+    defaultBtn.classList.remove("btn-outline");
+    defaultBtn.classList.add("btn-primary");
+  }
+
   document.getElementById("btnSaveStatus").onclick = async () => {
     const status = document.getElementById("updStatus").value;
     const techName = document.getElementById("updTech").value.trim();
     const note = document.getElementById("updNote").value.trim() || `Status changed to ${statusLabel(status)}`;
+
+    if (!note) {
+      showToast("Please write a note for the customer", "error");
+      return;
+    }
 
     try {
       const docRef = db.collection("complaints").doc(id);
@@ -502,6 +540,8 @@ async function updateComplaintStatus(id) {
       }
       const d = doc.data();
 
+      // IMPORTANT: only update status/notes/tech — NEVER touch customerUid
+      // so complaint always remains visible on customer side
       const update = {
         status: status,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -513,7 +553,7 @@ async function updateComplaintStatus(id) {
 
       const noteObj = {
         text: note,
-        by: user.name,
+        by: user.name || "Staff",
         at: Date.now()
       };
 
@@ -523,18 +563,22 @@ async function updateComplaintStatus(id) {
       });
 
       // In-app notification for customer
-      await createNotification(
-        d.customerUid,
-        `Complaint ${statusLabel(status)}`,
-        note,
-        "complaint",
-        id
-      );
+      if (d.customerUid) {
+        await createNotification(
+          d.customerUid,
+          `Complaint ${statusLabel(status)}`,
+          note,
+          "complaint",
+          id
+        );
+      }
 
       document.querySelector(".modal-overlay")?.classList.remove("active");
       showToast("Status updated + Customer notified", "success");
-      loadComplaintsList();
+      if (typeof loadComplaintsList === "function") loadComplaintsList();
+      if (typeof loadRecentComplaints === "function") loadRecentComplaints();
     } catch (e) {
+      console.error(e);
       showToast("Update failed: " + e.message, "error");
     }
   };
@@ -688,6 +732,44 @@ async function loadMyComplaints() {
   const el = document.getElementById("myComplaintsList");
   if (!el) return;
 
+  // Helper to render complaint cards (mobile-friendly, no cut-off)
+  function renderComplaintCards(docs) {
+    if (!docs.length) {
+      el.innerHTML = `<div class="empty-state"><p>You have not submitted any complaints yet.<br>Click "+ New Complaint" to submit one.</p></div>`;
+      return;
+    }
+    let html = `<div class="complaint-cards">`;
+    docs.forEach(d => {
+      const id = d.id || d.docId;
+      const date = d.createdAt ? (d.createdAt.toDate ? d.createdAt.toDate().toLocaleString() : new Date(d.createdAt.seconds * 1000).toLocaleString()) : "-";
+      const lastNote = (d.notes && d.notes.length) ? d.notes[d.notes.length - 1] : null;
+      const lastNoteText = lastNote ? lastNote.text : "";
+      const lastNoteBy = lastNote ? (lastNote.by || "Staff") : "";
+      html += `
+        <div class="complaint-card">
+          <div class="complaint-card-header">
+            <div>
+              <strong style="font-size:0.95rem;">${d.issue || "Complaint"}</strong>
+              <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">ID: ${(id || "").slice(0, 10)} • ${date}</div>
+            </div>
+            <span class="status ${statusClass(d.status)}">${statusLabel(d.status)}</span>
+          </div>
+          ${d.description ? `<p class="complaint-desc">${d.description}</p>` : ""}
+          ${d.technicianName ? `<div style="font-size:0.85rem;margin-top:6px;">Technician: <b>${d.technicianName}</b></div>` : ""}
+          ${lastNoteText ? `
+            <div class="complaint-last-note">
+              <div style="font-size:0.75rem;color:var(--text-muted);">Latest update by ${lastNoteBy}:</div>
+              <div style="font-size:0.9rem;margin-top:2px;">${lastNoteText}</div>
+            </div>` : ""}
+          <div style="margin-top:12px;">
+            <button class="btn btn-sm btn-outline" onclick="viewComplaint('${id}')">View Full Details</button>
+          </div>
+        </div>`;
+    });
+    html += `</div>`;
+    el.innerHTML = html;
+  }
+
   try {
     const snap = await db.collection("complaints")
       .where("customerUid", "==", user.uid)
@@ -699,25 +781,12 @@ async function loadMyComplaints() {
       return;
     }
 
-    let html = `<div class="table-wrapper"><table>
-      <thead><tr><th>ID</th><th>Issue</th><th>Status</th><th>Technician</th><th>Date</th><th></th></tr></thead><tbody>`;
-
-    snap.forEach(doc => {
-      const d = doc.data();
-      const date = d.createdAt ? d.createdAt.toDate().toLocaleDateString() : "-";
-      html += `<tr>
-        <td>${doc.id.slice(0, 8)}</td>
-        <td>${d.issue}</td>
-        <td><span class="status ${statusClass(d.status)}">${statusLabel(d.status)}</span></td>
-        <td>${d.technicianName || "-"}</td>
-        <td>${date}</td>
-        <td><button class="btn btn-sm btn-outline" onclick="viewComplaint('${doc.id}')">View</button></td>
-      </tr>`;
-    });
-    html += `</tbody></table></div>`;
-    el.innerHTML = html;
+    const docs = [];
+    snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+    renderComplaintCards(docs);
   } catch (e) {
-    // If index error, try without orderBy
+    // Fallback if composite index missing (customerUid + createdAt)
+    console.warn("MyComplaints orderBy failed (index?), using fallback:", e.message);
     try {
       const snap = await db.collection("complaints")
         .where("customerUid", "==", user.uid)
@@ -731,22 +800,9 @@ async function loadMyComplaints() {
       let docs = [];
       snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
       docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-
-      let html = `<div class="table-wrapper"><table>
-        <thead><tr><th>ID</th><th>Issue</th><th>Status</th><th>Date</th></tr></thead><tbody>`;
-      docs.forEach(d => {
-        const date = d.createdAt ? d.createdAt.toDate().toLocaleDateString() : "-";
-        html += `<tr>
-          <td>${d.id.slice(0, 8)}</td>
-          <td>${d.issue}</td>
-          <td><span class="status ${statusClass(d.status)}">${statusLabel(d.status)}</span></td>
-          <td>${date}</td>
-        </tr>`;
-      });
-      html += `</tbody></table></div>`;
-      el.innerHTML = html;
+      renderComplaintCards(docs);
     } catch (e2) {
-      el.innerHTML = `<p style="color:var(--danger);padding:16px;">Error loading. Create Firestore database first.</p>`;
+      el.innerHTML = `<p style="color:var(--danger);padding:16px;">Error loading complaints. Create Firestore database + composite index if needed.</p>`;
     }
   }
 }
@@ -2204,7 +2260,7 @@ function renderMyProfile(area) {
 /* ========== Helpers ========== */
 function statusClass(status) {
   if (status === "pending") return "pending";
-  if (status === "in_progress") return "resolved";
+  if (status === "in_progress") return "in-progress";
   if (status === "resolved") return "active";
   return "pending";
 }
