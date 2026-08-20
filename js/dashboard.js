@@ -185,11 +185,24 @@ function loadModule(name) {
 
 /* ========== DASHBOARD ========== */
 async function renderDashboard(area) {
-  area.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);">Loading...</div>`;
+  area.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);">Loading dashboard...</div>`;
 
-  let totalComplaints = 0;
-  let openComplaints = 0;
-  let pendingComplaints = 0;
+  let totalCustomers = 0, activeCustomers = 0, suspendedCustomers = 0;
+  let totalComplaints = 0, openComplaints = 0, pendingComplaints = 0;
+  let pendingBillsCount = 0, pendingBillsAmount = 0, monthlyIncome = 0;
+
+  const now = new Date();
+  const currentMonth = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+
+  try {
+    const custSnap = await db.collection("customers").get();
+    totalCustomers = custSnap.size;
+    custSnap.forEach(doc => {
+      const s = (doc.data().status || "active").toLowerCase();
+      if (s === "active") activeCustomers++;
+      else if (s === "suspended") suspendedCustomers++;
+    });
+  } catch (e) { console.warn("Dashboard customers:", e); }
 
   try {
     const snap = await db.collection("complaints").get();
@@ -199,14 +212,32 @@ async function renderDashboard(area) {
       if (s === "pending" || s === "in_progress") openComplaints++;
       if (s === "pending") pendingComplaints++;
     });
-  } catch (e) {
-    console.log("Dashboard stats error:", e);
-  }
+  } catch (e) { console.warn("Dashboard complaints:", e); }
+
+  try {
+    const billSnap = await db.collection("bills").get();
+    billSnap.forEach(doc => {
+      const b = doc.data();
+      const amt = Number(b.amount) || 0;
+      if (b.status === "pending") {
+        pendingBillsCount++;
+        pendingBillsAmount += amt;
+      }
+      // Paid this month
+      if (b.status === "paid" && b.month === currentMonth) {
+        monthlyIncome += amt;
+      }
+    });
+  } catch (e) { console.warn("Dashboard bills:", e); }
 
   const stats = [
-    { label: "Total Complaints", value: totalComplaints, icon: "purple", svg: iconComplaint() },
+    { label: "Total Customers", value: totalCustomers, icon: "purple", svg: iconUsers() },
+    { label: "Active Connections", value: activeCustomers, icon: "green", svg: iconCheck() },
+    { label: "Suspended", value: suspendedCustomers, icon: "red", svg: iconSuspend() },
+    { label: "Monthly Income", value: "₨ " + monthlyIncome.toLocaleString(), icon: "green", svg: iconBill() },
+    { label: "Pending Bills", value: pendingBillsCount + " (₨ " + pendingBillsAmount.toLocaleString() + ")", icon: "orange", svg: iconBilling() },
     { label: "Open Complaints", value: openComplaints, icon: "orange", svg: iconComplaint() },
-    { label: "Pending", value: pendingComplaints, icon: "red", svg: iconSuspend() },
+    { label: "Pending Complaints", value: pendingComplaints, icon: "red", svg: iconComplaint() },
     { label: "System Status", value: "Online", icon: "green", svg: iconCheck() }
   ];
 
@@ -481,8 +512,10 @@ async function updateComplaintStatus(id) {
         <input type="hidden" id="updStatus" value="in_progress" />
       </div>
       <div class="form-field">
-        <label>Technician Name (optional)</label>
-        <input type="text" id="updTech" placeholder="Technician name" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);" value="${user.name || ""}" />
+        <label>Assign Technician</label>
+        <select id="updTech" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);">
+          <option value="">-- Select Technician (optional) --</option>
+        </select>
       </div>
       <div class="form-field">
         <label>Note / Response for Customer *</label>
@@ -497,6 +530,27 @@ async function updateComplaintStatus(id) {
     <button class="btn btn-primary" id="btnSaveStatus">Save & Notify Customer</button>
     <button class="btn btn-outline" onclick="this.closest('.modal-overlay').classList.remove('active')">Cancel</button>
   `);
+
+  // Load real technicians into dropdown
+  (async () => {
+    const sel = document.getElementById("updTech");
+    if (!sel) return;
+    try {
+      const snap = await db.collection("users").get();
+      snap.forEach(doc => {
+        const u = doc.data();
+        if (u.role === "technician" || u.role === "admin") {
+          const opt = document.createElement("option");
+          opt.value = JSON.stringify({ id: doc.id, name: u.name || "Technician" });
+          opt.textContent = (u.name || "Technician") + (u.phone ? " (" + u.phone + ")" : "");
+          if (user && user.uid === doc.id) opt.selected = true;
+          sel.appendChild(opt);
+        }
+      });
+    } catch (e) {
+      // fallback free-text not needed; select stays empty
+    }
+  })();
 
   // Quick status button selection
   const statusBtns = document.querySelectorAll(".status-btn");
@@ -523,7 +577,7 @@ async function updateComplaintStatus(id) {
 
   document.getElementById("btnSaveStatus").onclick = async () => {
     const status = document.getElementById("updStatus").value;
-    const techName = document.getElementById("updTech").value.trim();
+    const techVal = document.getElementById("updTech").value;
     const note = document.getElementById("updNote").value.trim() || `Status changed to ${statusLabel(status)}`;
 
     if (!note) {
@@ -541,14 +595,18 @@ async function updateComplaintStatus(id) {
       const d = doc.data();
 
       // IMPORTANT: only update status/notes/tech — NEVER touch customerUid
-      // so complaint always remains visible on customer side
       const update = {
         status: status,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       };
-      if (techName) {
-        update.technicianName = techName;
-        update.technicianId = user.uid;
+      if (techVal) {
+        try {
+          const t = JSON.parse(techVal);
+          update.technicianName = t.name;
+          update.technicianId = t.id;
+        } catch (e) {
+          update.technicianName = techVal;
+        }
       }
 
       const noteObj = {
@@ -826,13 +884,18 @@ async function submitComplaint() {
   btn.textContent = "Submitting...";
 
   try {
-    // Try to attach full customer profile data
+    // Attach FULL customer profile so staff sees everything in complaint
     let extra = {};
+    let custName = user.name;
+    let custPhone = phone || user.phone || "";
     try {
       const q = await db.collection("customers").where("uid", "==", user.uid).limit(1).get();
       if (!q.empty) {
         const c = q.docs[0].data();
+        custName = c.name || user.name;
+        custPhone = phone || c.phone || user.phone || "";
         extra = {
+          customerId: q.docs[0].id,
           customerPackage: c.package || "",
           customerArea: c.area || "",
           customerAddress: c.address || "",
@@ -840,16 +903,18 @@ async function submitComplaint() {
           customerPort: c.fiberPort || "",
           customerCnic: c.cnic || "",
           customerRent: c.rent || 0,
-          customerStatus: c.status || ""
+          customerStatus: c.status || "active",
+          customerGps: c.gps || "",
+          customerEmail: c.email || user.email || ""
         };
       }
-    } catch (e) {}
+    } catch (e) { console.warn("Customer lookup for complaint:", e); }
 
     const complaint = {
       customerUid: user.uid,
-      customerName: user.name,
+      customerName: custName,
       customerEmail: user.email,
-      customerPhone: phone || user.phone || "",
+      customerPhone: custPhone,
       issue: issue,
       description: description,
       status: "pending",
@@ -857,7 +922,7 @@ async function submitComplaint() {
       technicianName: null,
       notes: [{
         text: "Complaint submitted by customer",
-        by: user.name,
+        by: custName,
         at: Date.now()
       }],
       ...extra,
