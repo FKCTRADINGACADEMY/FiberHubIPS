@@ -1037,3 +1037,135 @@ tr:hover td {
     font-size: 1.2rem;
   }
 }
+
+/* ========== Enhanced Responsive (Mobile + PC) ========== */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+img, svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.table-wrapper {
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    width: 280px;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.3);
+  }
+  .content-area {
+    padding: 16px;
+  }
+  .topbar {
+    padding: 0 12px;
+  }
+  .page-title {
+    font-size: 1.05rem;
+  }
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .card {
+    padding: 16px;
+  }
+  .card-header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  table {
+    font-size: 0.8rem;
+  }
+  th, td {
+    padding: 10px 8px;
+  }
+  .btn {
+    padding: 10px 14px;
+  }
+  .toast-container {
+    left: 12px;
+    right: 12px;
+    top: 12px;
+  }
+  .toast {
+    font-size: 0.85rem;
+  }
+  .modal {
+    max-width: 100%;
+    margin: 10px;
+    border-radius: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-wrapper {
+    padding: 0 4px;
+  }
+  .logo-img {
+    width: 70px;
+    height: 70px;
+  }
+  .brand-name {
+    font-size: 1.7rem;
+  }
+  .login-card {
+    padding: 20px 16px;
+  }
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  .stat-card {
+    padding: 14px;
+  }
+  .login-features {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .feature-item {
+    font-size: 0.65rem;
+  }
+  .sidebar-header {
+    padding: 16px;
+  }
+  .content-area {
+    padding: 12px;
+  }
+  .btn-sm {
+    padding: 5px 8px;
+    font-size: 0.75rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  .stats-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .content-area {
+    padding: 28px 32px;
+  }
+}
+
+@media (min-width: 1600px) {
+  .main-content {
+    max-width: 1600px;
+  }
+}
+
+/* Safe area for notched phones */
+@supports (padding: max(0px)) {
+  .login-page, .dashboard-page {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+  }
+  .topbar {
+    padding-top: max(0px, env(safe-area-inset-top));
+  }
+}
