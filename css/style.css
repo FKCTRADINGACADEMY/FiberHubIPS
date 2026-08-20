@@ -883,6 +883,41 @@ tr:hover td {
 .status.suspended { background: rgba(229, 57, 53, 0.15); color: var(--danger); }
 .status.pending { background: rgba(251, 140, 0, 0.15); color: var(--warning); }
 .status.resolved { background: rgba(30, 136, 229, 0.15); color: var(--primary); }
+.status.in-progress { background: rgba(156, 39, 176, 0.15); color: #ab47bc; }
+
+/* Complaint cards – mobile friendly (no cut-off) */
+.complaint-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.complaint-card {
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.complaint-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.complaint-desc {
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  word-break: break-word;
+}
+.complaint-last-note {
+  margin-top: 10px;
+  padding: 10px;
+  background: rgba(30, 136, 229, 0.08);
+  border-left: 3px solid var(--primary);
+  border-radius: 0 8px 8px 0;
+}
 
 /* Modal */
 .modal-overlay {
@@ -1167,5 +1202,22 @@ img, svg {
   }
   .topbar {
     padding-top: max(0px, env(safe-area-inset-top));
+  }
+}
+
+/* Extra mobile safety for tables & complaint actions */
+@media (max-width: 600px) {
+  .table-wrapper {
+    margin: 0 -4px;
+  }
+  table {
+    min-width: 480px; /* force horizontal scroll instead of crushing columns */
+  }
+  .complaint-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .complaint-card-header .status {
+    margin-top: 6px;
   }
 }
