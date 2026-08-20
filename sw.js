@@ -3,7 +3,7 @@
  * Network-first + instant update on new version
  */
 
-const CACHE_VERSION = "fiberhub-v1.6.0";
+const CACHE_VERSION = "fiberhub-v1.7.0";
 const CACHE_NAME = `fiberhub-${CACHE_VERSION}`;
 
 const ASSETS = [
