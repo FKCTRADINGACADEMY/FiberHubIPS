@@ -206,39 +206,92 @@ function loadModule(name) {
 
 /* ========== DASHBOARD ========== */
 async function renderDashboard(area) {
-  area.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);">Loading dashboard...</div>`;
+  // Instant shell – no long full-page loading
+  const now = new Date();
+  const u = getCurrentUser() || user || {};
+  const greet = now.getHours() < 12 ? "Good Morning" : now.getHours() < 17 ? "Good Afternoon" : "Good Evening";
+  const dateStr = now.toLocaleDateString("en-PK", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+
+  area.innerHTML = `
+    <div class="dash-hero">
+      <div class="dash-hero-text">
+        <h2>${greet}, ${(u.name || "Admin").split(" ")[0]} 👋</h2>
+        <p>${dateStr}</p>
+      </div>
+      <div class="dash-hero-actions">
+        <button class="btn btn-primary btn-sm" onclick="loadModule('customers')">+ Customer</button>
+        <button class="btn btn-outline btn-sm" onclick="loadModule('complaints')">Complaints</button>
+        <button class="btn btn-outline btn-sm" onclick="loadModule('billing')">Billing</button>
+      </div>
+    </div>
+    <div class="stats-grid dash-stats" id="dashStats">
+      <div class="stat-card stat-modern accent-blue stat-click" onclick="loadModule('customers')"><div class="stat-icon blue">${iconUsers()}</div><div class="stat-info"><h3>…</h3><p>Total Customers</p></div></div>
+      <div class="stat-card stat-modern accent-green stat-click" onclick="loadModule('customers')"><div class="stat-icon green">${iconCheck()}</div><div class="stat-info"><h3>…</h3><p>Active</p></div></div>
+      <div class="stat-card stat-modern accent-red stat-click" onclick="loadModule('customers')"><div class="stat-icon red">${iconSuspend()}</div><div class="stat-info"><h3>…</h3><p>Suspended</p></div></div>
+      <div class="stat-card stat-modern accent-teal stat-click" onclick="loadModule('billing')"><div class="stat-icon green">${iconBill()}</div><div class="stat-info"><h3>…</h3><p>Monthly Income</p></div></div>
+      <div class="stat-card stat-modern accent-orange stat-click" onclick="loadModule('billing')"><div class="stat-icon orange">${iconBilling()}</div><div class="stat-info"><h3>…</h3><p>Pending Bills</p></div></div>
+      <div class="stat-card stat-modern accent-purple stat-click" onclick="loadModule('complaints')"><div class="stat-icon purple">${iconComplaint()}</div><div class="stat-info"><h3>…</h3><p>Open Complaints</p></div></div>
+    </div>
+    <div class="dash-grid-2">
+      <div class="card dash-card">
+        <div class="card-header"><h3 class="card-title">📈 Revenue (6 months)</h3></div>
+        <div class="revenue-chart" id="dashRevenueChart"><p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p></div>
+      </div>
+      <div class="card dash-card">
+        <div class="card-header"><h3 class="card-title">⚡ Quick Actions</h3></div>
+        <div class="quick-actions">
+          <button type="button" class="qa-btn" onclick="loadModule('customers')"><span>👥</span><span class="qa-label">Customers</span></button>
+          <button type="button" class="qa-btn" onclick="loadModule('billing')"><span>💵</span><span class="qa-label">Billing</span></button>
+          <button type="button" class="qa-btn" onclick="loadModule('complaints')"><span>🛠</span><span class="qa-label">Complaints</span></button>
+          <button type="button" class="qa-btn" onclick="loadModule('reports')"><span>📊</span><span class="qa-label">Reports</span></button>
+          <button type="button" class="qa-btn" onclick="loadModule('network')"><span>🌐</span><span class="qa-label">Network</span></button>
+          <button type="button" class="qa-btn" onclick="loadModule('settings')"><span>⚙️</span><span class="qa-label">Settings</span></button>
+          <button type="button" class="qa-btn qa-warn" onclick="sendDueReminders()"><span>📱</span><span class="qa-label">Due Reminders</span></button>
+          <button type="button" class="qa-btn" onclick="loadModule('users')"><span>🔐</span><span class="qa-label">Users</span></button>
+        </div>
+      </div>
+    </div>
+    <div class="card dash-card">
+      <div class="card-header">
+        <h3 class="card-title">Recent Complaints</h3>
+        <button class="btn btn-primary btn-sm" onclick="loadModule('complaints')">View All</button>
+      </div>
+      <div id="recentComplaintsList">Loading…</div>
+    </div>
+  `;
+
+  // Parallel data load (fast)
+  loadRecentComplaints();
+  const currentMonth = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+  const monthTotals = {};
+
+  const [custRes, compRes, billRes] = await Promise.allSettled([
+    db.collection("customers").get(),
+    db.collection("complaints").get(),
+    db.collection("bills").get()
+  ]);
 
   let totalCustomers = 0, activeCustomers = 0, suspendedCustomers = 0;
   let openComplaints = 0, pendingComplaints = 0;
   let pendingBillsCount = 0, pendingBillsAmount = 0, monthlyIncome = 0;
-  const monthTotals = {}; // YYYY-MM -> paid amount
 
-  const now = new Date();
-  const currentMonth = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
-  const dateStr = now.toLocaleDateString("en-PK", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-
-  try {
-    const custSnap = await db.collection("customers").get();
-    totalCustomers = custSnap.size;
-    custSnap.forEach(doc => {
+  if (custRes.status === "fulfilled") {
+    totalCustomers = custRes.value.size;
+    custRes.value.forEach(doc => {
       const s = (doc.data().status || "active").toLowerCase();
       if (s === "active") activeCustomers++;
       else if (s === "suspended") suspendedCustomers++;
     });
-  } catch (e) { console.warn("Dashboard customers:", e); }
-
-  try {
-    const snap = await db.collection("complaints").get();
-    snap.forEach(doc => {
+  }
+  if (compRes.status === "fulfilled") {
+    compRes.value.forEach(doc => {
       const s = doc.data().status;
       if (s === "pending" || s === "in_progress") openComplaints++;
       if (s === "pending") pendingComplaints++;
     });
-  } catch (e) { console.warn("Dashboard complaints:", e); }
-
-  try {
-    const billSnap = await db.collection("bills").get();
-    billSnap.forEach(doc => {
+  }
+  if (billRes.status === "fulfilled") {
+    billRes.value.forEach(doc => {
       const b = doc.data();
       const amt = Number(b.amount) || 0;
       const late = Number(b.lateFee) || 0;
@@ -251,9 +304,37 @@ async function renderDashboard(area) {
         if (b.month === currentMonth) monthlyIncome += amt + late;
       }
     });
-  } catch (e) { console.warn("Dashboard bills:", e); }
+  }
 
-  // Last 6 months for mini chart
+  const statsEl = document.getElementById("dashStats");
+  if (statsEl) {
+    statsEl.innerHTML = `
+      <div class="stat-card stat-modern accent-blue stat-click" onclick="loadModule('customers')">
+        <div class="stat-icon blue">${iconUsers()}</div>
+        <div class="stat-info"><h3>${totalCustomers}</h3><p>Total Customers</p></div>
+      </div>
+      <div class="stat-card stat-modern accent-green stat-click" onclick="loadModule('customers')">
+        <div class="stat-icon green">${iconCheck()}</div>
+        <div class="stat-info"><h3>${activeCustomers}</h3><p>Active Connections</p></div>
+      </div>
+      <div class="stat-card stat-modern accent-red stat-click" onclick="loadModule('customers')">
+        <div class="stat-icon red">${iconSuspend()}</div>
+        <div class="stat-info"><h3>${suspendedCustomers}</h3><p>Suspended</p></div>
+      </div>
+      <div class="stat-card stat-modern accent-teal stat-click" onclick="loadModule('billing')">
+        <div class="stat-icon green">${iconBill()}</div>
+        <div class="stat-info"><h3>₨ ${monthlyIncome.toLocaleString()}</h3><p>Monthly Income</p></div>
+      </div>
+      <div class="stat-card stat-modern accent-orange stat-click" onclick="loadModule('billing')">
+        <div class="stat-icon orange">${iconBilling()}</div>
+        <div class="stat-info"><h3>${pendingBillsCount}</h3><p>Pending · ₨ ${pendingBillsAmount.toLocaleString()}</p></div>
+      </div>
+      <div class="stat-card stat-modern accent-purple stat-click" onclick="loadModule('complaints')">
+        <div class="stat-icon purple">${iconComplaint()}</div>
+        <div class="stat-info"><h3>${openComplaints}</h3><p>Open (${pendingComplaints} pending)</p></div>
+      </div>`;
+  }
+
   const chartMonths = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -261,94 +342,17 @@ async function renderDashboard(area) {
     chartMonths.push({ key, label: d.toLocaleString("en", { month: "short" }), value: monthTotals[key] || 0 });
   }
   const maxChart = Math.max(...chartMonths.map(m => m.value), 1);
-
-  const u = getCurrentUser() || user || {};
-  const greet = now.getHours() < 12 ? "Good Morning" : now.getHours() < 17 ? "Good Afternoon" : "Good Evening";
-
-  let html = `
-    <div class="dash-hero">
-      <div class="dash-hero-text">
-        <h2>${greet}, ${u.name || "Admin"} 👋</h2>
-        <p>${dateStr} · FiberHub ISP Control Center</p>
-      </div>
-      <div class="dash-hero-actions">
-        <button class="btn btn-primary btn-sm" onclick="loadModule('customers')">+ Customer</button>
-        <button class="btn btn-outline btn-sm" onclick="loadModule('complaints')">Complaints</button>
-        <button class="btn btn-outline btn-sm" onclick="loadModule('billing')">Billing</button>
-      </div>
-    </div>
-
-    <div class="stats-grid dash-stats">
-      <div class="stat-card stat-modern accent-blue">
-        <div class="stat-icon blue">${iconUsers()}</div>
-        <div class="stat-info"><h3>${totalCustomers}</h3><p>Total Customers</p></div>
-      </div>
-      <div class="stat-card stat-modern accent-green">
-        <div class="stat-icon green">${iconCheck()}</div>
-        <div class="stat-info"><h3>${activeCustomers}</h3><p>Active Connections</p></div>
-      </div>
-      <div class="stat-card stat-modern accent-red">
-        <div class="stat-icon red">${iconSuspend()}</div>
-        <div class="stat-info"><h3>${suspendedCustomers}</h3><p>Suspended</p></div>
-      </div>
-      <div class="stat-card stat-modern accent-teal">
-        <div class="stat-icon green">${iconBill()}</div>
-        <div class="stat-info"><h3>₨ ${monthlyIncome.toLocaleString()}</h3><p>Monthly Income</p></div>
-      </div>
-      <div class="stat-card stat-modern accent-orange">
-        <div class="stat-icon orange">${iconBilling()}</div>
-        <div class="stat-info"><h3>${pendingBillsCount}</h3><p>Pending Bills · ₨ ${pendingBillsAmount.toLocaleString()}</p></div>
-      </div>
-      <div class="stat-card stat-modern accent-purple">
-        <div class="stat-icon purple">${iconComplaint()}</div>
-        <div class="stat-info"><h3>${openComplaints}</h3><p>Open Complaints (${pendingComplaints} pending)</p></div>
-      </div>
-    </div>
-
-    <div class="dash-grid-2">
-      <div class="card dash-card">
-        <div class="card-header">
-          <h3 class="card-title">📈 Revenue (6 months)</h3>
-        </div>
-        <div class="revenue-chart">
-          ${chartMonths.map(m => `
-            <div class="rev-bar-col" title="${m.key}: ₨ ${m.value.toLocaleString()}">
-              <div class="rev-bar-wrap">
-                <div class="rev-bar" style="height:${Math.max(4, (m.value / maxChart) * 100)}%"></div>
-              </div>
-              <span class="rev-label">${m.label}</span>
-              <span class="rev-val">${m.value ? "₨" + (m.value >= 1000 ? Math.round(m.value / 1000) + "k" : m.value) : "0"}</span>
-            </div>
-          `).join("")}
-        </div>
-      </div>
-      <div class="card dash-card">
-        <div class="card-header">
-          <h3 class="card-title">⚡ Quick Actions</h3>
-        </div>
-        <div class="quick-actions">
-          <button class="qa-btn" onclick="loadModule('customers')"><span>👥</span> Customers</button>
-          <button class="qa-btn" onclick="loadModule('billing')"><span>💵</span> Billing</button>
-          <button class="qa-btn" onclick="loadModule('complaints')"><span>🛠</span> Complaints</button>
-          <button class="qa-btn" onclick="loadModule('reports')"><span>📊</span> Reports</button>
-          <button class="qa-btn" onclick="loadModule('network')"><span>🌐</span> Network</button>
-          <button class="qa-btn" onclick="loadModule('settings')"><span>⚙️</span> Settings</button>
-          <button class="qa-btn qa-warn" onclick="sendDueReminders()"><span>📱</span> Due Reminders</button>
-          <button class="qa-btn" onclick="loadModule('users')"><span>🔐</span> Users</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="card dash-card">
-      <div class="card-header">
-        <h3 class="card-title">Recent Complaints</h3>
-        <button class="btn btn-primary btn-sm" onclick="loadModule('complaints')">View All</button>
-      </div>
-      <div id="recentComplaintsList">Loading...</div>
-    </div>
-  `;
-  area.innerHTML = html;
-  loadRecentComplaints();
+  const chartEl = document.getElementById("dashRevenueChart");
+  if (chartEl) {
+    chartEl.innerHTML = chartMonths.map(m => {
+      const pct = m.value > 0 ? Math.max(8, (m.value / maxChart) * 100) : 0;
+      return `<div class="rev-bar-col" title="${m.key}: ₨ ${m.value.toLocaleString()}">
+        <div class="rev-bar-wrap"><div class="rev-bar" style="height:${pct}%"></div></div>
+        <span class="rev-label">${m.label}</span>
+        <span class="rev-val">${m.value ? (m.value >= 1000 ? "₨" + Math.round(m.value / 1000) + "k" : "₨" + m.value) : "0"}</span>
+      </div>`;
+    }).join("");
+  }
 }
 
 /** Bulk WhatsApp due reminders for pending bills (opens first few) */
@@ -2233,6 +2237,15 @@ async function renderNetwork(area) {
 
     <div class="card dash-card">
       <div class="card-header">
+        <h3 class="card-title">Network Topology</h3>
+        <button class="btn btn-outline btn-sm" onclick="loadNetworkTopology()">Refresh</button>
+      </div>
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;">OLT → PON / Splitter tree (Parent field se link)</p>
+      <div id="networkTopology" class="topo-wrap">Loading…</div>
+    </div>
+
+    <div class="card dash-card">
+      <div class="card-header">
         <h3 class="card-title">Network Inventory</h3>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <select id="netFilter" onchange="loadNetworkList()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);">
@@ -2252,6 +2265,70 @@ async function renderNetwork(area) {
     </div>
   `;
   loadNetworkList();
+  loadNetworkTopology();
+}
+
+async function loadNetworkTopology() {
+  const el = document.getElementById("networkTopology");
+  if (!el) return;
+  try {
+    const snap = await db.collection("network").get();
+    const items = [];
+    snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+    if (items.length === 0) {
+      el.innerHTML = `<p style="color:var(--text-muted);padding:8px;">No network items. Add OLT first, then PON/Splitter with Parent = OLT name.</p>`;
+      return;
+    }
+    const olts = items.filter(i => i.type === "olt");
+    const others = items.filter(i => i.type !== "olt");
+    const matchParent = (child, parentName) => {
+      const p = (child.parent || "").toLowerCase().trim();
+      const n = (parentName || "").toLowerCase().trim();
+      return p && n && (p === n || p.includes(n) || n.includes(p));
+    };
+
+    let html = "";
+    if (olts.length === 0) {
+      html += `<p style="color:var(--text-muted);margin-bottom:10px;">No OLT yet — showing all items</p>`;
+      html += `<div class="topo-children">`;
+      others.forEach(c => {
+        html += `<div class="topo-node"><div class="topo-type">${c.type || ""}</div><strong>${c.name || "-"}</strong><small>${c.ponPort || c.location || ""}</small></div>`;
+      });
+      html += `</div>`;
+    } else {
+      olts.forEach(olt => {
+        const kids = others.filter(c => matchParent(c, olt.name));
+        const unlinked = [];
+        html += `<div class="topo-olt">
+          <div class="topo-olt-title">🖥 OLT · ${olt.name || "OLT"} ${olt.location ? "· " + olt.location : ""}</div>
+          <div class="topo-children">`;
+        if (kids.length === 0) {
+          html += `<div class="topo-node"><small>No linked children (set Parent = ${olt.name})</small></div>`;
+        } else {
+          kids.forEach(c => {
+            html += `<div class="topo-node"><div class="topo-type">${c.type || ""}</div><strong>${c.name || "-"}</strong><small>${c.ponPort || ""} ${c.location || ""}</small></div>`;
+          });
+        }
+        html += `</div></div>`;
+      });
+      // Items with no parent match
+      const linked = new Set();
+      olts.forEach(olt => {
+        others.forEach(c => { if (matchParent(c, olt.name)) linked.add(c.id); });
+      });
+      const rest = others.filter(c => !linked.has(c.id));
+      if (rest.length) {
+        html += `<div class="topo-olt"><div class="topo-olt-title">Unlinked / Other</div><div class="topo-children">`;
+        rest.forEach(c => {
+          html += `<div class="topo-node"><div class="topo-type">${c.type || ""}</div><strong>${c.name || "-"}</strong><small>${c.parent ? "Parent: " + c.parent : ""} ${c.location || ""}</small></div>`;
+        });
+        html += `</div></div>`;
+      }
+    }
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<p style="color:var(--danger);">Topology load error</p>`;
+  }
 }
 
 async function saveNetworkItem() {
@@ -2276,6 +2353,7 @@ async function saveNetworkItem() {
     document.getElementById("netPon").value = "";
     document.getElementById("netLoc").value = "";
     loadNetworkList();
+    loadNetworkTopology();
   } catch (e) {
     showToast("Error: " + e.message, "error");
   }
