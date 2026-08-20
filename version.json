@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.2.0",
   "buildDate": "2026-08-20",
-  "notes": "Initial release - Login, Dashboard, Role-based modules, PWA ready"
+  "notes": "Self-registration added. Auto user tracking. Real complaints with full customer details."
 }

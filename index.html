@@ -9,12 +9,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>FiberHub ISP - Login</title>
   
-  <!-- PWA -->
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" href="assets/logo.png" />
   <link rel="apple-touch-icon" href="assets/logo.png" />
   
-  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -23,21 +21,17 @@
   <link rel="stylesheet" href="css/themes.css" />
 </head>
 <body class="login-page dark-theme">
-  <!-- Background -->
   <div class="login-bg">
     <div class="bg-overlay"></div>
     <div class="fiber-lines"></div>
   </div>
 
-  <!-- Theme Toggle -->
   <button id="themeToggle" class="theme-toggle" title="Toggle Theme">
     <svg class="sun-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
     <svg class="moon-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
   </button>
 
-  <!-- Main Login Container -->
   <div class="login-wrapper">
-    <!-- Logo Section -->
     <div class="login-logo">
       <img src="assets/logo.png" alt="FiberHub ISP" class="logo-img" />
       <h1 class="brand-name">Fiber<span>Hub</span></h1>
@@ -49,8 +43,8 @@
       <p class="tagline">Manage Your Network with Confidence.</p>
     </div>
 
-    <!-- Login Card -->
-    <div class="login-card">
+    <!-- LOGIN CARD -->
+    <div class="login-card" id="loginCard">
       <div class="user-icon">
         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
       </div>
@@ -58,13 +52,12 @@
       <h2 class="login-title">Welcome Back!</h2>
       <p class="login-subtitle">Sign in to your account</p>
 
-      <!-- Login Form -->
       <form id="loginForm" class="login-form">
         <div class="form-group">
           <div class="input-icon">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
           </div>
-          <input type="text" id="email" placeholder="Email / Username / Mobile" required autocomplete="username" />
+          <input type="text" id="email" placeholder="Email / Username" required autocomplete="username" />
         </div>
 
         <div class="form-group">
@@ -92,28 +85,71 @@
         </button>
       </form>
 
-      <div class="divider">
-        <span>or continue with</span>
-      </div>
+      <div class="divider"><span>or</span></div>
 
-      <button type="button" class="btn-otp" id="otpLoginBtn">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        <span>Login with OTP</span>
+      <button type="button" class="btn-otp" id="showRegisterBtn">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+        <span>New User? Register Now</span>
       </button>
-
-      <!-- Role Quick Info (for demo) -->
-      <div class="demo-roles">
-        <p class="demo-title">Demo Roles (Firebase ready)</p>
-        <div class="role-badges">
-          <span class="badge admin">Admin</span>
-          <span class="badge billing">Billing</span>
-          <span class="badge tech">Technician</span>
-          <span class="badge user">Customer</span>
-        </div>
-      </div>
     </div>
 
-    <!-- Features Footer -->
+    <!-- REGISTER CARD -->
+    <div class="login-card" id="registerCard" style="display:none;">
+      <div class="user-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+      </div>
+      
+      <h2 class="login-title">Create Account</h2>
+      <p class="login-subtitle">Register as Customer</p>
+
+      <form id="registerForm" class="login-form">
+        <div class="form-group">
+          <div class="input-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <input type="text" id="regName" placeholder="Full Name *" required />
+        </div>
+
+        <div class="form-group">
+          <div class="input-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          </div>
+          <input type="email" id="regEmail" placeholder="Email Address *" required />
+        </div>
+
+        <div class="form-group">
+          <div class="input-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          </div>
+          <input type="tel" id="regPhone" placeholder="Mobile Number (03XXXXXXXXX)" />
+        </div>
+
+        <div class="form-group">
+          <div class="input-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <input type="password" id="regPassword" placeholder="Password (min 6 characters) *" required minlength="6" />
+        </div>
+
+        <div class="form-group">
+          <div class="input-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <input type="password" id="regPassword2" placeholder="Confirm Password *" required minlength="6" />
+        </div>
+
+        <button type="submit" class="btn-login" id="registerBtn">
+          <span>Create Account</span>
+        </button>
+      </form>
+
+      <div class="divider"><span>or</span></div>
+
+      <button type="button" class="btn-otp" id="showLoginBtn">
+        <span>Already have account? Login</span>
+      </button>
+    </div>
+
     <div class="login-features">
       <div class="feature-item">
         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -139,10 +175,8 @@
     </div>
   </div>
 
-  <!-- Version -->
-  <div class="app-version" id="appVersion">v1.0.0</div>
+  <div class="app-version" id="appVersion">v1.2.0</div>
 
-  <!-- Scripts -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>

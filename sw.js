@@ -3,7 +3,7 @@
  * Offline support + auto cache update
  */
 
-const CACHE_VERSION = "fiberhub-v1.0.0";
+const CACHE_VERSION = "fiberhub-v1.2.0";
 const CACHE_NAME = `fiberhub-${CACHE_VERSION}`;
 
 const ASSETS = [
