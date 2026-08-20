@@ -154,13 +154,21 @@ function initPasswordToggle() {
   });
 }
 
+let _appKnownVersion = null;
+
 async function loadVersion() {
   try {
-    const res = await fetch("version.json?t=" + Date.now());
+    const res = await fetch("version.json?t=" + Date.now(), { cache: "no-store" });
     if (res.ok) {
       const data = await res.json();
       const el = document.getElementById("appVersion");
       if (el) el.textContent = "v" + data.version;
+      if (_appKnownVersion && _appKnownVersion !== data.version) {
+        // Version changed on server → force reload for installed PWAs
+        window.location.reload(true);
+        return;
+      }
+      _appKnownVersion = data.version;
     }
   } catch (e) {}
 }
@@ -169,27 +177,29 @@ function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
 
   navigator.serviceWorker.register("sw.js").then((reg) => {
-    // Check for updates every 60 seconds
-    setInterval(() => reg.update(), 60000);
+    // Check for SW updates every 3 seconds
+    setInterval(() => { try { reg.update(); } catch (e) {} }, 3000);
 
     reg.addEventListener("updatefound", () => {
       const newWorker = reg.installing;
       if (!newWorker) return;
       newWorker.addEventListener("statechange", () => {
         if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-          // Auto activate new version
           newWorker.postMessage({ type: "SKIP_WAITING" });
-          showToast("Updating app...", "info");
+          if (typeof showToast === "function") showToast("Updating app...", "info");
         }
       });
     });
   }).catch(() => {});
 
-  // When new SW takes control → reload automatically
+  // New SW took control → reload
   let refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (refreshing) return;
     refreshing = true;
     window.location.reload();
   });
+
+  // Also poll version.json every 3s so any deploy auto-refreshes installed PWAs
+  setInterval(loadVersion, 3000);
 }

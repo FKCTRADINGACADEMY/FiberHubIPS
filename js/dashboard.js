@@ -25,27 +25,48 @@ document.addEventListener("DOMContentLoaded", () => {
   initPWAUpdate();
 });
 
+let _dashKnownVersion = null;
+
 function initPWAUpdate() {
   if (!("serviceWorker" in navigator)) return;
   navigator.serviceWorker.register("sw.js").then((reg) => {
-    setInterval(() => reg.update(), 60000);
+    // Check SW every 3 seconds
+    setInterval(() => { try { reg.update(); } catch (e) {} }, 3000);
     reg.addEventListener("updatefound", () => {
       const nw = reg.installing;
       if (!nw) return;
       nw.addEventListener("statechange", () => {
         if (nw.state === "installed" && navigator.serviceWorker.controller) {
           nw.postMessage({ type: "SKIP_WAITING" });
-          showToast("Updating app...", "info");
+          showToast("Updating app to latest version...", "info");
         }
       });
     });
   }).catch(() => {});
+
   let refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (refreshing) return;
     refreshing = true;
     window.location.reload();
   });
+
+  // Poll version.json every 3s — auto reload when you deploy a new version
+  setInterval(async () => {
+    try {
+      const res = await fetch("version.json?t=" + Date.now(), { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      const el = document.getElementById("appVersion");
+      if (el) el.textContent = "v" + data.version;
+      if (_dashKnownVersion && _dashKnownVersion !== data.version) {
+        showToast("New version " + data.version + " — updating...", "info");
+        setTimeout(() => window.location.reload(true), 800);
+        return;
+      }
+      _dashKnownVersion = data.version;
+    } catch (e) {}
+  }, 3000);
 }
 
 /* ========== Setup ========== */
@@ -1001,6 +1022,42 @@ async function renderCustomers(area) {
   loadCustomersList();
 }
 
+async function fillPackagesSelect(selectedName) {
+  const sel = document.getElementById("cPackage");
+  if (!sel) return;
+  const current = selectedName || sel.value;
+  try {
+    const snap = await db.collection("packages").get();
+    let opts = [];
+    snap.forEach(doc => {
+      const p = doc.data();
+      opts.push({ name: p.name, rent: p.rent || 0 });
+    });
+    opts.sort((a, b) => a.rent - b.rent);
+    if (opts.length === 0) {
+      opts = [
+        { name: "10 Mbps", rent: 1500 },
+        { name: "20 Mbps", rent: 2500 },
+        { name: "30 Mbps", rent: 3000 },
+        { name: "50 Mbps", rent: 4000 },
+        { name: "100 Mbps", rent: 6000 }
+      ];
+    }
+    sel.innerHTML = opts.map(o =>
+      `<option value="${o.name}" data-rent="${o.rent}">${o.name} — ₨ ${o.rent}</option>`
+    ).join("");
+    if (current) sel.value = current;
+    // Auto-fill rent when package changes
+    sel.onchange = () => {
+      const opt = sel.options[sel.selectedIndex];
+      if (opt && opt.dataset.rent) {
+        const rentEl = document.getElementById("cRent");
+        if (rentEl) rentEl.value = opt.dataset.rent;
+      }
+    };
+  } catch (e) {}
+}
+
 function showCustomerForm(id) {
   document.getElementById("customerFormCard").style.display = "block";
   document.getElementById("customerFormTitle").textContent = id ? "Edit Customer" : "New Customer";
@@ -1008,11 +1065,11 @@ function showCustomerForm(id) {
   const passField = document.getElementById("cPasswordField");
   const hint = document.getElementById("cLoginHint");
   const saveBtn = document.getElementById("saveCustomerBtn");
+  fillPackagesSelect(id ? undefined : "20 Mbps");
   if (!id) {
     ["cName","cCnic","cPhone","cEmail","cPassword","cOnu","cPort","cArea","cGps","cAddress"].forEach(i => {
       const el = document.getElementById(i); if (el) el.value = "";
     });
-    document.getElementById("cPackage").value = "20 Mbps";
     document.getElementById("cRent").value = "2500";
     document.getElementById("cStatus").value = "active";
     if (passField) passField.style.display = "block";
@@ -1153,6 +1210,7 @@ async function loadCustomersList() {
         <td><span class="status ${d.status === "active" ? "active" : "suspended"}">${d.status || "active"}</span></td>
         <td style="white-space:nowrap;">
           <button class="btn btn-sm btn-outline" onclick="editCustomer('${d.id}')">Edit</button>
+          <button class="btn btn-sm btn-outline" onclick="viewCustomerBills('${d.id}', '${(d.name || "").replace(/'/g, "")}')">Bills</button>
           ${phone ? `<button class="btn btn-sm btn-outline" style="color:#25D366;" onclick="openWhatsApp('${phone}', '${waMsg.replace(/'/g, "\\'")}')" title="WhatsApp">WA</button>` : ""}
           ${d.email ? `<button class="btn btn-sm btn-outline" onclick="resetCustomerPassword('${d.email}')">Reset Pass</button>` : ""}
           <button class="btn btn-sm btn-outline" onclick="deleteCustomer('${d.id}')" style="color:var(--danger);">Del</button>
@@ -1166,12 +1224,56 @@ async function loadCustomersList() {
   }
 }
 
+async function viewCustomerBills(customerId, customerName) {
+  try {
+    const snap = await db.collection("bills").where("customerId", "==", customerId).get();
+    let docs = [];
+    snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+    // fallback: also match by name if customerId missing on old bills
+    if (docs.length === 0) {
+      const all = await db.collection("bills").get();
+      all.forEach(doc => {
+        const d = doc.data();
+        if (d.customerId === customerId || (customerName && d.customerName === customerName)) {
+          docs.push({ id: doc.id, ...d });
+        }
+      });
+    }
+    docs.sort((a, b) => (b.month || "").localeCompare(a.month || ""));
+
+    let body = `<p style="margin-bottom:12px;color:var(--text-muted);">Bill history for <strong>${customerName || customerId}</strong></p>`;
+    if (docs.length === 0) {
+      body += `<p style="color:var(--text-muted);">No bills found for this customer.</p>`;
+    } else {
+      body += `<div class="table-wrapper"><table>
+        <thead><tr><th>Month</th><th>Amount</th><th>Late</th><th>Status</th><th>Method</th></tr></thead><tbody>`;
+      docs.forEach(d => {
+        const late = Number(d.lateFee) || 0;
+        body += `<tr>
+          <td>${d.month || "-"}</td>
+          <td>₨ ${d.amount || 0}</td>
+          <td>${late ? "₨ " + late : "-"}</td>
+          <td><span class="status ${d.status === "paid" ? "active" : "pending"}">${d.status || "-"}</span></td>
+          <td>${d.method || "-"}</td>
+        </tr>`;
+      });
+      body += `</tbody></table></div>`;
+    }
+    showModal("Bill History", body, `
+      <button class="btn btn-outline" onclick="this.closest('.modal-overlay').classList.remove('active')">Close</button>
+    `);
+  } catch (e) {
+    showToast("Error loading bills: " + e.message, "error");
+  }
+}
+
 async function editCustomer(id) {
   try {
     const doc = await db.collection("customers").doc(id).get();
     if (!doc.exists) return;
     const d = doc.data();
     showCustomerForm(id);
+    await fillPackagesSelect(d.package || "20 Mbps");
     document.getElementById("cName").value = d.name || "";
     document.getElementById("cCnic").value = d.cnic || "";
     document.getElementById("cPhone").value = d.phone || "";
@@ -1405,17 +1507,20 @@ async function loadBillsList() {
       <thead><tr><th>Customer</th><th>Month</th><th>Amount</th><th>Method</th><th>Status</th><th>Actions</th></tr></thead><tbody>`;
     docs.forEach(d => {
       const phone = d.customerPhone || "";
+      const late = Number(d.lateFee) || 0;
+      const total = (Number(d.amount) || 0) + late;
       html += `<tr>
         <td>${d.customerName || "-"}<br><small>${phone}</small></td>
         <td>${d.month || "-"}</td>
-        <td>₨ ${d.amount || 0}</td>
+        <td>₨ ${d.amount || 0}${late ? `<br><small style="color:var(--warning)">+Late ₨${late} = ₨${total}</small>` : ""}</td>
         <td>${d.method || "-"}</td>
         <td><span class="status ${d.status === "paid" ? "active" : "pending"}">${d.status}</span></td>
         <td style="white-space:nowrap;">
           ${d.status === "pending" ? `<button class="btn btn-sm btn-primary" onclick="markPaid('${d.id}')">Mark Paid</button>` : ""}
+          ${d.status === "pending" && !late ? `<button class="btn btn-sm btn-outline" style="color:var(--warning);" onclick="applyLateFee('${d.id}')">+Late Fee</button>` : ""}
           <button class="btn btn-sm btn-outline" onclick="editBill('${d.id}')">Edit</button>
           <button class="btn btn-sm btn-outline" onclick="printBill('${d.id}')">PDF</button>
-          ${phone ? `<button class="btn btn-sm btn-outline" style="color:#25D366;" onclick="openWhatsApp('${phone}', 'Assalam o Alaikum ${d.customerName || ""}, aapka bill ${d.month || ""} – ₨${d.amount || 0} (${d.status}). FiberHub ISP.')" title="WhatsApp">WA</button>` : ""}
+          ${phone ? `<button class="btn btn-sm btn-outline" style="color:#25D366;" onclick="openWhatsApp('${phone}', 'Assalam o Alaikum ${d.customerName || ""}, aapka bill ${d.month || ""} – ₨${total} (${d.status})${late ? " including late fee ₨"+late : ""}. FiberHub ISP.')" title="WhatsApp">WA</button>` : ""}
           <button class="btn btn-sm btn-outline" onclick="deleteBill('${d.id}')" style="color:var(--danger);">Del</button>
         </td>
       </tr>`;
@@ -1549,6 +1654,28 @@ async function markPaid(id) {
   }
 }
 
+async function applyLateFee(id) {
+  try {
+    let feeAmount = 200;
+    try {
+      const s = await db.collection("settings").doc("billing").get();
+      if (s.exists && s.data().lateFeeAmount != null) feeAmount = Number(s.data().lateFeeAmount) || 200;
+    } catch (e) {}
+    const custom = prompt("Late fee amount (₨):", String(feeAmount));
+    if (custom === null) return;
+    const fee = Number(custom) || 0;
+    if (fee <= 0) { showToast("Invalid amount", "error"); return; }
+    await db.collection("bills").doc(id).update({
+      lateFee: fee,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    showToast("Late fee ₨" + fee + " applied", "success");
+    loadBillsList();
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+}
+
 async function printBill(id) {
   try {
     const doc = await db.collection("bills").doc(id).get();
@@ -1568,7 +1695,9 @@ async function printBill(id) {
       <div class="row"><span>Month:</span><span>${d.month || "-"}</span></div>
       <div class="row"><span>Method:</span><span>${d.method || "-"}</span></div>
       <div class="row"><span>Txn No:</span><span>${d.txnNo || "-"}</span></div>
-      <div class="row total"><span>Amount:</span><span>₨ ${d.amount || 0}</span></div>
+      <div class="row"><span>Bill Amount:</span><span>₨ ${d.amount || 0}</span></div>
+      ${(Number(d.lateFee) > 0) ? `<div class="row"><span>Late Fee:</span><span>₨ ${d.lateFee}</span></div>` : ""}
+      <div class="row total"><span>Total:</span><span>₨ ${(Number(d.amount) || 0) + (Number(d.lateFee) || 0)}</span></div>
       <div class="row"><span>Status:</span><strong>${d.status}</strong></div>
       <br><button onclick="window.print()">Print / Save PDF</button>
       <p style="margin-top:30px;font-size:11px;color:#999;text-align:center;">Software By Fazul Khan Chandio • 03333909816</p>
@@ -2027,18 +2156,285 @@ async function renderSettings(area) {
       </div>
       <button class="btn btn-primary" onclick="saveCompanySettings()">Save Company</button>
     </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Packages</h3>
+        <button class="btn btn-primary btn-sm" onclick="showPackageForm()">+ Add Package</button>
+      </div>
+      <div id="packageForm" style="display:none;margin-bottom:16px;padding:12px;background:var(--bg-main);border-radius:10px;">
+        <input type="hidden" id="pkgEditId" value="" />
+        <div class="form-row">
+          <div class="form-field"><label>Name *</label><input id="pkgName" placeholder="e.g. 20 Mbps" /></div>
+          <div class="form-field"><label>Speed (Mbps)</label><input id="pkgSpeed" type="number" placeholder="20" /></div>
+          <div class="form-field"><label>Monthly Rent (₨) *</label><input id="pkgRent" type="number" placeholder="2500" /></div>
+          <div class="form-field"><label>Description</label><input id="pkgDesc" placeholder="Optional" /></div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary btn-sm" onclick="savePackage()">Save Package</button>
+          <button class="btn btn-outline btn-sm" onclick="hidePackageForm()">Cancel</button>
+        </div>
+      </div>
+      <div id="packagesList">Loading...</div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Areas</h3>
+        <button class="btn btn-primary btn-sm" onclick="showAreaForm()">+ Add Area</button>
+      </div>
+      <div id="areaForm" style="display:none;margin-bottom:16px;padding:12px;background:var(--bg-main);border-radius:10px;">
+        <input type="hidden" id="areaEditId" value="" />
+        <div class="form-row">
+          <div class="form-field"><label>Area Name *</label><input id="areaName" placeholder="e.g. Block A / Gulshan" /></div>
+          <div class="form-field"><label>City / Zone</label><input id="areaCity" placeholder="Optional" /></div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary btn-sm" onclick="saveArea()">Save Area</button>
+          <button class="btn btn-outline btn-sm" onclick="hideAreaForm()">Cancel</button>
+        </div>
+      </div>
+      <div id="areasList">Loading...</div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Late Fee Settings</h3></div>
+      <div class="form-row">
+        <div class="form-field"><label>Late Fee Amount (₨)</label><input id="setLateFee" type="number" placeholder="200" value="200" /></div>
+        <div class="form-field"><label>Apply after (days overdue)</label><input id="setLateDays" type="number" placeholder="10" value="10" /></div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="saveLateFeeSettings()">Save Late Fee</button>
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-top:8px;">Pending bills pe Late Fee button se apply hoga</p>
+    </div>
+
     <div class="card">
       <div class="card-header"><h3 class="card-title">Auto Suspend (Unpaid Bills)</h3></div>
       <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:12px;">Pending bills wale customers ko suspend karein</p>
       <button class="btn btn-outline" style="border-color:var(--danger);color:var(--danger);" onclick="runAutoSuspend()">Run Auto Suspend Now</button>
       <div id="suspendResult" style="margin-top:12px;"></div>
     </div>
-    <div class="card">
-      <div class="card-header"><h3 class="card-title">Packages</h3></div>
-      <p style="color:var(--text-muted);font-size:0.85rem;">Default packages: 10/20/30/50/100 Mbps — Customer form mein available hain</p>
-    </div>
   `;
   loadCompanySettings();
+  loadPackagesList();
+  loadAreasList();
+  loadLateFeeSettings();
+}
+
+function showPackageForm(id, data) {
+  document.getElementById("packageForm").style.display = "block";
+  document.getElementById("pkgEditId").value = id || "";
+  document.getElementById("pkgName").value = data?.name || "";
+  document.getElementById("pkgSpeed").value = data?.speed || "";
+  document.getElementById("pkgRent").value = data?.rent || "";
+  document.getElementById("pkgDesc").value = data?.description || "";
+}
+
+function editPackageById(id) {
+  const d = (window._packagesCache && window._packagesCache[id]) || {};
+  showPackageForm(id, d);
+}
+
+function hidePackageForm() {
+  document.getElementById("packageForm").style.display = "none";
+  document.getElementById("pkgEditId").value = "";
+}
+
+async function savePackage() {
+  const id = document.getElementById("pkgEditId").value;
+  const name = document.getElementById("pkgName").value.trim();
+  const speed = Number(document.getElementById("pkgSpeed").value) || 0;
+  const rent = Number(document.getElementById("pkgRent").value) || 0;
+  const description = document.getElementById("pkgDesc").value.trim();
+
+  if (!name || !rent) {
+    showToast("Name and Rent required", "error");
+    return;
+  }
+
+  const data = {
+    name,
+    speed,
+    rent,
+    description,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  try {
+    if (id) {
+      await db.collection("packages").doc(id).update(data);
+      showToast("Package updated", "success");
+    } else {
+      data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection("packages").add(data);
+      showToast("Package added", "success");
+    }
+    hidePackageForm();
+    loadPackagesList();
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+}
+
+async function loadPackagesList() {
+  const el = document.getElementById("packagesList");
+  if (!el) return;
+  try {
+    const snap = await db.collection("packages").get();
+    let docs = [];
+    snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+    docs.sort((a, b) => (a.rent || 0) - (b.rent || 0));
+
+    if (docs.length === 0) {
+      // Seed defaults once if empty
+      const defaults = [
+        { name: "10 Mbps", speed: 10, rent: 1500 },
+        { name: "20 Mbps", speed: 20, rent: 2500 },
+        { name: "30 Mbps", speed: 30, rent: 3000 },
+        { name: "50 Mbps", speed: 50, rent: 4000 },
+        { name: "100 Mbps", speed: 100, rent: 6000 }
+      ];
+      for (const p of defaults) {
+        await db.collection("packages").add({
+          ...p,
+          description: "",
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+      showToast("Default packages created", "success");
+      return loadPackagesList();
+    }
+
+    window._packagesCache = {};
+    docs.forEach(d => { window._packagesCache[d.id] = d; });
+
+    let html = `<div class="table-wrapper"><table>
+      <thead><tr><th>Name</th><th>Speed</th><th>Rent</th><th>Actions</th></tr></thead><tbody>`;
+    docs.forEach(d => {
+      html += `<tr>
+        <td><strong>${d.name || ""}</strong>${d.description ? `<br><small style="color:var(--text-muted)">${d.description}</small>` : ""}</td>
+        <td>${d.speed || "-"} Mbps</td>
+        <td>₨ ${(d.rent || 0).toLocaleString()}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-sm btn-outline" onclick="editPackageById('${d.id}')">Edit</button>
+          <button class="btn btn-sm btn-outline" style="color:var(--danger);" onclick="deletePackage('${d.id}')">Del</button>
+        </td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<p style="color:var(--danger);">Error loading packages. Create Firestore first.</p>`;
+  }
+}
+
+async function deletePackage(id) {
+  if (!confirm("Delete this package?")) return;
+  try {
+    await db.collection("packages").doc(id).delete();
+    showToast("Package deleted", "success");
+    loadPackagesList();
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+}
+
+/* ========== Areas CRUD ========== */
+function showAreaForm(id, data) {
+  document.getElementById("areaForm").style.display = "block";
+  document.getElementById("areaEditId").value = id || "";
+  document.getElementById("areaName").value = data?.name || "";
+  document.getElementById("areaCity").value = data?.city || "";
+}
+function hideAreaForm() {
+  document.getElementById("areaForm").style.display = "none";
+  document.getElementById("areaEditId").value = "";
+}
+function editAreaById(id) {
+  const d = (window._areasCache && window._areasCache[id]) || {};
+  showAreaForm(id, d);
+}
+async function saveArea() {
+  const id = document.getElementById("areaEditId").value;
+  const name = document.getElementById("areaName").value.trim();
+  const city = document.getElementById("areaCity").value.trim();
+  if (!name) { showToast("Area name required", "error"); return; }
+  try {
+    const data = { name, city, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+    if (id) {
+      await db.collection("areas").doc(id).update(data);
+      showToast("Area updated", "success");
+    } else {
+      data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection("areas").add(data);
+      showToast("Area added", "success");
+    }
+    hideAreaForm();
+    loadAreasList();
+  } catch (e) { showToast("Error: " + e.message, "error"); }
+}
+async function loadAreasList() {
+  const el = document.getElementById("areasList");
+  if (!el) return;
+  try {
+    const snap = await db.collection("areas").get();
+    let docs = [];
+    snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+    docs.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    window._areasCache = {};
+    docs.forEach(d => { window._areasCache[d.id] = d; });
+    if (docs.length === 0) {
+      el.innerHTML = `<p style="color:var(--text-muted);padding:8px;">No areas yet. Add first area.</p>`;
+      return;
+    }
+    let html = `<div class="table-wrapper"><table>
+      <thead><tr><th>Area</th><th>City/Zone</th><th>Actions</th></tr></thead><tbody>`;
+    docs.forEach(d => {
+      html += `<tr>
+        <td><strong>${d.name || ""}</strong></td>
+        <td>${d.city || "-"}</td>
+        <td>
+          <button class="btn btn-sm btn-outline" onclick="editAreaById('${d.id}')">Edit</button>
+          <button class="btn btn-sm btn-outline" style="color:var(--danger);" onclick="deleteArea('${d.id}')">Del</button>
+        </td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<p style="color:var(--danger);">Error loading areas</p>`;
+  }
+}
+async function deleteArea(id) {
+  if (!confirm("Delete this area?")) return;
+  try {
+    await db.collection("areas").doc(id).delete();
+    showToast("Area deleted", "success");
+    loadAreasList();
+  } catch (e) { showToast("Error: " + e.message, "error"); }
+}
+
+/* ========== Late Fee Settings ========== */
+async function loadLateFeeSettings() {
+  try {
+    const doc = await db.collection("settings").doc("billing").get();
+    if (doc.exists) {
+      const d = doc.data();
+      const fee = document.getElementById("setLateFee");
+      const days = document.getElementById("setLateDays");
+      if (fee) fee.value = d.lateFeeAmount ?? 200;
+      if (days) days.value = d.lateFeeDays ?? 10;
+    }
+  } catch (e) {}
+}
+async function saveLateFeeSettings() {
+  try {
+    await db.collection("settings").doc("billing").set({
+      lateFeeAmount: Number(document.getElementById("setLateFee").value) || 0,
+      lateFeeDays: Number(document.getElementById("setLateDays").value) || 10,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    showToast("Late fee settings saved", "success");
+  } catch (e) { showToast("Error: " + e.message, "error"); }
 }
 
 async function loadCompanySettings() {
@@ -2437,10 +2833,23 @@ function iconBill() {
 
 async function loadVersion() {
   try {
-    const res = await fetch("version.json?t=" + Date.now());
+    const res = await fetch("version.json?t=" + Date.now(), { cache: "no-store" });
     if (res.ok) {
       const data = await res.json();
-      console.log("App version:", data.version);
+      _dashKnownVersion = data.version;
+      const el = document.getElementById("appVersion");
+      if (el) el.textContent = "v" + data.version;
+      // Also show in sidebar footer if present
+      const foot = document.querySelector(".sidebar-footer");
+      if (foot && !document.getElementById("sidebarVersion")) {
+        const v = document.createElement("div");
+        v.id = "sidebarVersion";
+        v.style.cssText = "text-align:center;font-size:0.7rem;color:var(--text-muted);margin-top:4px;";
+        v.textContent = "v" + data.version;
+        foot.appendChild(v);
+      } else if (document.getElementById("sidebarVersion")) {
+        document.getElementById("sidebarVersion").textContent = "v" + data.version;
+      }
     }
   } catch (e) {}
 }
