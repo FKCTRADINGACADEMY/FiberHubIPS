@@ -1,45 +1,39 @@
 /**
  * FiberHub ISP - Firebase Configuration
- * 
- * IMPORTANT: Replace the config below with your own Firebase project credentials.
- * 
- * How to get:
- * 1. Go to https://console.firebase.google.com
- * 2. Create a new project (or use existing)
- * 3. Enable Authentication (Email/Password + optionally Phone)
- * 4. Create Firestore Database
- * 5. Enable Storage
- * 6. Project Settings → General → Your apps → Web app → Copy config
+ * Project: fiber-hub-ips
  */
 
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyD21ZZm1Wz62_GUo8XLkdvgkwQavxkAX-M",
+  authDomain: "fiber-hub-ips.firebaseapp.com",
+  projectId: "fiber-hub-ips",
+  storageBucket: "fiber-hub-ips.firebasestorage.app",
+  messagingSenderId: "159401133832",
+  appId: "1:159401133832:web:61be7296474f2b0a250ebd"
 };
 
-// Initialize Firebase (only if config is filled)
+// Initialize Firebase
 let app, auth, db, storage;
 
 try {
-  if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
-    app = firebase.initializeApp(firebaseConfig);
-    auth = firebase.auth();
-    db = firebase.firestore();
-    storage = firebase.storage ? firebase.storage() : null;
-    console.log("✅ Firebase initialized successfully");
-  } else {
-    console.warn("⚠️ Firebase config not set. Running in DEMO mode.");
+  app = firebase.initializeApp(firebaseConfig);
+  auth = firebase.auth();
+  db = firebase.firestore();
+  
+  // Storage (optional - enable when needed)
+  try {
+    storage = firebase.storage();
+  } catch (e) {
+    storage = null;
   }
+  
+  console.log("✅ Firebase initialized successfully - Project: fiber-hub-ips");
 } catch (e) {
   console.error("Firebase init error:", e);
 }
 
 /**
- * Firestore Collections Structure (to keep documents small < 1MB)
+ * Firestore Collections Structure (keeps documents small < 1MB)
  * 
  * /users/{uid}                    - user profile + role
  * /customers/{id}                 - customer basic info
@@ -56,5 +50,5 @@ try {
  * /branches/{id}                  - branch support
  */
 
-// Demo mode flag
-const isDemoMode = () => !auth || firebaseConfig.apiKey === "YOUR_API_KEY";
+// Real Firebase is connected (demo mode OFF)
+const isDemoMode = () => false;
