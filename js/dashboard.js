@@ -411,34 +411,37 @@ async function loadRecentComplaints() {
   if (!el) return;
 
   try {
-    const snap = await db.collection("complaints")
-      .orderBy("createdAt", "desc")
-      .limit(5)
-      .get();
+    let snap;
+    try {
+      snap = await db.collection("complaints").orderBy("createdAt", "desc").limit(6).get();
+    } catch (e) {
+      snap = await db.collection("complaints").limit(20).get();
+    }
 
-    if (snap.empty) {
+    let docs = [];
+    snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+    docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+    docs = docs.slice(0, 6);
+
+    if (docs.length === 0) {
       el.innerHTML = `<p style="color:var(--text-muted);padding:20px;text-align:center;">No complaints yet</p>`;
       return;
     }
 
-    let html = `<div class="table-wrapper"><table>
-      <thead><tr><th>ID</th><th>Customer</th><th>Issue</th><th>Status</th><th>Date</th></tr></thead><tbody>`;
-
-    snap.forEach(doc => {
-      const d = doc.data();
-      const date = d.createdAt ? d.createdAt.toDate().toLocaleDateString() : "-";
-      html += `<tr>
-        <td>${doc.id.slice(0, 8)}</td>
-        <td>${d.customerName || d.customerEmail || "-"}</td>
-        <td>${d.issue || "-"}</td>
-        <td><span class="status ${statusClass(d.status)}">${statusLabel(d.status)}</span></td>
-        <td>${date}</td>
-      </tr>`;
-    });
-    html += `</tbody></table></div>`;
-    el.innerHTML = html;
+    el.innerHTML = `<div class="complaint-cards">${docs.map(d => {
+      const date = d.createdAt?.toDate ? d.createdAt.toDate().toLocaleDateString() : "-";
+      return `<div class="complaint-card" style="cursor:pointer;" onclick="viewComplaint('${d.id}')">
+        <div class="complaint-card-header">
+          <div>
+            <strong>${d.issue || "Complaint"}</strong>
+            <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">${d.customerName || "-"} · ${date}</div>
+          </div>
+          <span class="status ${statusClass(d.status)}">${statusLabel(d.status)}</span>
+        </div>
+      </div>`;
+    }).join("")}</div>`;
   } catch (e) {
-    el.innerHTML = `<p style="color:var(--danger);padding:12px;">Error loading complaints. Make sure Firestore is created.</p>`;
+    el.innerHTML = `<p style="color:var(--danger);padding:12px;">Error loading complaints.</p>`;
   }
 }
 
@@ -775,6 +778,7 @@ async function updateComplaintStatus(id) {
       logActivity("complaint", "Complaint " + id.slice(0, 8) + " → " + statusLabel(status));
       if (typeof loadComplaintsList === "function") loadComplaintsList();
       if (typeof loadRecentComplaints === "function") loadRecentComplaints();
+      if (typeof loadTechJobs === "function") loadTechJobs();
     } catch (e) {
       console.error(e);
       showToast("Update failed: " + e.message, "error");
@@ -2419,6 +2423,7 @@ async function deleteNetworkItem(id) {
     await db.collection("network").doc(id).delete();
     showToast("Deleted", "success");
     loadNetworkList();
+    if (typeof loadNetworkTopology === "function") loadNetworkTopology();
   } catch (e) {
     showToast("Error", "error");
   }
@@ -3127,30 +3132,12 @@ async function loadTechJobs() {
 }
 
 async function techUpdateJob(id) {
-  const choice = prompt("Update status:\n1 = Start (In Progress)\n2 = Resolved\n\nType 1 or 2:");
-  if (!choice) return;
-  const status = choice === "1" ? "in_progress" : choice === "2" ? "resolved" : null;
-  if (!status) { showToast("Invalid", "error"); return; }
-
-  const note = prompt("Add note (optional):") || "";
-
-  try {
-    await db.collection("complaints").doc(id).update({
-      status,
-      technicianId: user.uid,
-      technicianName: user.name,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      notes: firebase.firestore.FieldValue.arrayUnion({
-        text: note || `Status → ${statusLabel(status)}`,
-        by: user.name,
-        at: Date.now()
-      })
-    });
-    showToast("Job updated", "success");
-    loadTechJobs();
-  } catch (e) {
-    showToast("Error: " + e.message, "error");
-  }
+  // Reuse full status modal (Pending / In Progress / Resolved + notes)
+  await updateComplaintStatus(id);
+  // Refresh tech list after modal closes (short delay for save)
+  setTimeout(() => {
+    if (typeof loadTechJobs === "function") loadTechJobs();
+  }, 1500);
 }
 
 async function renderMyBills(area) {
