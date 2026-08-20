@@ -1,9 +1,9 @@
 /**
- * FiberHub ISP - Service Worker (PWA)
- * Offline support + auto cache update
+ * FiberHub ISP - Service Worker
+ * Network-first + instant update on new version
  */
 
-const CACHE_VERSION = "fiberhub-v1.5.0";
+const CACHE_VERSION = "fiberhub-v1.6.0";
 const CACHE_NAME = `fiberhub-${CACHE_VERSION}`;
 
 const ASSETS = [
@@ -24,56 +24,58 @@ const ASSETS = [
   "./version.json"
 ];
 
-
-// Install
+// Install - cache shell, take control immediately
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log("[SW] Caching app shell");
-      return cache.addAll(ASSETS);
-    }).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(ASSETS))
+      .then(() => self.skipWaiting())
   );
 });
 
-// Activate - clean old caches
+// Activate - delete old caches, claim all clients
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.filter((k) => k.startsWith("fiberhub-") && k !== CACHE_NAME)
-            .map((k) => caches.delete(k))
-      );
-    }).then(() => self.clients.claim())
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter((k) => k.startsWith("fiberhub-") && k !== CACHE_NAME)
+          .map((k) => caches.delete(k))
+      )
+    ).then(() => self.clients.claim())
   );
 });
 
-// Fetch - network first, fallback to cache
+// Network-first for HTML/JS/CSS (always fresh), cache fallback offline
 self.addEventListener("fetch", (event) => {
-  // Skip non-GET and external (Firebase etc.)
   if (event.request.method !== "GET") return;
   if (!event.request.url.startsWith(self.location.origin)) return;
 
+  const url = event.request.url;
+
+  // Always network-first for app files so updates show immediately
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Cache successful responses
         if (response && response.status === 200) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
         return response;
       })
-      .catch(() => {
-        return caches.match(event.request).then((cached) => {
-          return cached || caches.match("./index.html");
-        });
-      })
+      .catch(() =>
+        caches.match(event.request).then((cached) =>
+          cached || caches.match("./index.html")
+        )
+      )
   );
 });
 
-// Listen for version update messages
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting();
+  }
+  if (event.data && event.data.type === "GET_VERSION") {
+    event.ports[0].postMessage({ version: CACHE_VERSION });
   }
 });

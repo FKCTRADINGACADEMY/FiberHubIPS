@@ -1,5 +1,1 @@
-{
-  "version": "1.5.0",
-  "buildDate": "2026-08-20",
-  "notes": "PWA icons fixed, full responsive mobile/PC, maskable icons"
-}
+{"version":"1.6.0","buildDate":"2026-08-20","notes":"Customer auto login on add, password reset, technician contacts"}
