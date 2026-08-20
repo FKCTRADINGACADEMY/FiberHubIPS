@@ -692,23 +692,41 @@ body {
 .stat-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 16px;
   padding: 20px;
   display: flex;
   align-items: flex-start;
   gap: 16px;
   transition: var(--transition);
+  position: relative;
+  overflow: hidden;
 }
 
 .stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
 }
+
+.stat-modern::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 16px 16px 0 0;
+}
+.accent-blue::before { background: linear-gradient(90deg, #1e88e5, #42a5f5); }
+.accent-green::before { background: linear-gradient(90deg, #43a047, #66bb6a); }
+.accent-red::before { background: linear-gradient(90deg, #e53935, #ef5350); }
+.accent-teal::before { background: linear-gradient(90deg, #00897b, #26a69a); }
+.accent-orange::before { background: linear-gradient(90deg, #fb8c00, #ffa726); }
+.accent-purple::before { background: linear-gradient(90deg, #8e24aa, #ab47bc); }
 
 .stat-icon {
   width: 48px;
   height: 48px;
-  border-radius: 12px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -722,15 +740,133 @@ body {
 .stat-icon.purple { background: rgba(156, 39, 176, 0.15); color: #ab47bc; }
 
 .stat-info h3 {
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: 1.45rem;
+  font-weight: 800;
   color: var(--text-primary);
   margin-bottom: 2px;
+  letter-spacing: -0.02em;
 }
 
 .stat-info p {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* Modern Dashboard hero + chart */
+.dash-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+  padding: 22px 24px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(30, 136, 229, 0.18) 0%, rgba(13, 33, 55, 0.6) 50%, rgba(67, 160, 71, 0.12) 100%);
+  border: 1px solid var(--border);
+}
+.light-theme .dash-hero {
+  background: linear-gradient(135deg, rgba(30, 136, 229, 0.12) 0%, rgba(255,255,255,0.9) 50%, rgba(67, 160, 71, 0.08) 100%);
+}
+.dash-hero-text h2 {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+.dash-hero-text p {
+  margin: 0;
   font-size: 0.85rem;
   color: var(--text-muted);
+}
+.dash-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.dash-grid-2 {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+@media (max-width: 900px) {
+  .dash-grid-2 { grid-template-columns: 1fr; }
+}
+.dash-card {
+  border-radius: 16px;
+}
+.revenue-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  height: 160px;
+  padding: 8px 4px 0;
+}
+.rev-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.rev-bar-wrap {
+  width: 100%;
+  max-width: 36px;
+  height: 110px;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(30, 136, 229, 0.06);
+  border-radius: 8px 8px 4px 4px;
+}
+.rev-bar {
+  width: 100%;
+  border-radius: 8px 8px 4px 4px;
+  background: linear-gradient(180deg, #42a5f5 0%, #1e88e5 100%);
+  min-height: 4px;
+  transition: height 0.4s ease;
+}
+.rev-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.rev-val {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+}
+.quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.qa-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-main);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: left;
+}
+.qa-btn:hover {
+  border-color: var(--primary);
+  background: var(--bg-hover);
+  transform: translateY(-1px);
+}
+.qa-btn span { font-size: 1.15rem; }
+.qa-btn.qa-warn {
+  border-color: rgba(251, 140, 0, 0.35);
+  color: var(--warning);
 }
 
 /* Cards */

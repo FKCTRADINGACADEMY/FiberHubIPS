@@ -2,28 +2,36 @@
    FiberHub ISP - Dark & Light Themes
    ============================================ */
 
-/* Dark Theme (Default) */
+/* Dark Theme (Default) – modern deep navy */
 .dark-theme {
-  --bg-main: #0a1628;
-  --bg-sidebar: #0d2137;
-  --bg-card: #112240;
-  --bg-hover: rgba(30, 136, 229, 0.1);
-  --border: rgba(255, 255, 255, 0.08);
-  --text-primary: #e8eef7;
-  --text-secondary: #a0aec0;
-  --text-muted: #718096;
+  --bg-main: #07111f;
+  --bg-sidebar: #0b1a2e;
+  --bg-card: #0f1f35;
+  --bg-hover: rgba(56, 189, 248, 0.1);
+  --border: rgba(148, 163, 184, 0.12);
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --primary: #38bdf8;
+  --success: #4ade80;
+  --danger: #f87171;
+  --warning: #fbbf24;
 }
 
-/* Light Theme */
+/* Light Theme – clean soft slate */
 .light-theme {
-  --bg-main: #f0f4f8;
+  --bg-main: #f1f5f9;
   --bg-sidebar: #ffffff;
   --bg-card: #ffffff;
-  --bg-hover: rgba(30, 136, 229, 0.08);
-  --border: rgba(0, 0, 0, 0.08);
-  --text-primary: #1a202c;
-  --text-secondary: #4a5568;
-  --text-muted: #718096;
+  --bg-hover: rgba(14, 165, 233, 0.08);
+  --border: rgba(15, 23, 42, 0.08);
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --primary: #0ea5e9;
+  --success: #22c55e;
+  --danger: #ef4444;
+  --warning: #f59e0b;
 }
 
 /* Light theme login page overrides */
