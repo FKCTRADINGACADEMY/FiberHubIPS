@@ -1,17 +1,22 @@
 /**
- * FiberHub ISP - Main App Logic (Login Page)
+ * FiberHub ISP - Main App Logic (Login + Register)
  */
 
 document.addEventListener("DOMContentLoaded", () => {
   // Auto redirect if already logged in
-  if (isLoggedIn() && window.location.pathname.endsWith("index.html") || window.location.pathname.endsWith("/")) {
-    window.location.href = "dashboard.html";
-    return;
+  if (isLoggedIn()) {
+    const path = window.location.pathname;
+    if (path.endsWith("index.html") || path.endsWith("/") || path === "") {
+      window.location.href = "dashboard.html";
+      return;
+    }
   }
 
   initTheme();
   initLoginForm();
+  initRegisterForm();
   initPasswordToggle();
+  initCardToggle();
   loadVersion();
   registerServiceWorker();
 });
@@ -35,9 +40,29 @@ function setTheme(theme) {
   document.body.classList.add(theme + "-theme");
   localStorage.setItem("fh_theme", theme);
   
-  // Update meta theme-color
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.content = theme === "dark" ? "#0a1628" : "#e8f4fd";
+}
+
+/* ========== Toggle Login / Register ========== */
+function initCardToggle() {
+  const showReg = document.getElementById("showRegisterBtn");
+  const showLog = document.getElementById("showLoginBtn");
+  const loginCard = document.getElementById("loginCard");
+  const registerCard = document.getElementById("registerCard");
+
+  if (showReg) {
+    showReg.addEventListener("click", () => {
+      loginCard.style.display = "none";
+      registerCard.style.display = "block";
+    });
+  }
+  if (showLog) {
+    showLog.addEventListener("click", () => {
+      registerCard.style.display = "none";
+      loginCard.style.display = "block";
+    });
+  }
 }
 
 /* ========== Login Form ========== */
@@ -61,7 +86,7 @@ function initLoginForm() {
       showToast(`Welcome, ${result.user.name}!`, "success");
       setTimeout(() => {
         window.location.href = "dashboard.html";
-      }, 600);
+      }, 500);
     } else {
       showToast(result.error || "Login failed", "error");
       btn.disabled = false;
@@ -71,22 +96,50 @@ function initLoginForm() {
     }
   });
 
-  // OTP button
-  const otpBtn = document.getElementById("otpLoginBtn");
-  if (otpBtn) {
-    otpBtn.addEventListener("click", () => {
-      showToast("OTP Login: Enter mobile number feature coming soon.", "info");
-    });
-  }
-
-  // Forgot password
   const forgot = document.getElementById("forgotPassword");
   if (forgot) {
     forgot.addEventListener("click", (e) => {
       e.preventDefault();
-      showToast("Password reset will be sent to your email (configure Firebase).", "info");
+      showToast("Password reset feature coming soon.", "info");
     });
   }
+}
+
+/* ========== Register Form ========== */
+function initRegisterForm() {
+  const form = document.getElementById("registerForm");
+  if (!form) return;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = document.getElementById("regName").value;
+    const email = document.getElementById("regEmail").value;
+    const phone = document.getElementById("regPhone").value;
+    const password = document.getElementById("regPassword").value;
+    const password2 = document.getElementById("regPassword2").value;
+    const btn = document.getElementById("registerBtn");
+
+    if (password !== password2) {
+      showToast("Passwords do not match", "error");
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = `<span class="loading-spinner"></span> <span>Creating account...</span>`;
+
+    const result = await register(name, email, phone, password);
+
+    if (result.success) {
+      showToast(`Account created! Welcome ${result.user.name}`, "success");
+      setTimeout(() => {
+        window.location.href = "dashboard.html";
+      }, 800);
+    } else {
+      showToast(result.error || "Registration failed", "error");
+      btn.disabled = false;
+      btn.innerHTML = `<span>Create Account</span>`;
+    }
+  });
 }
 
 /* ========== Password Toggle ========== */
@@ -121,7 +174,6 @@ function registerServiceWorker() {
     navigator.serviceWorker.register("sw.js")
       .then((reg) => {
         console.log("SW registered:", reg.scope);
-        // Check for updates
         reg.addEventListener("updatefound", () => {
           const newWorker = reg.installing;
           newWorker.addEventListener("statechange", () => {

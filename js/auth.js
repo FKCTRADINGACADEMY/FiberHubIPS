@@ -1,6 +1,6 @@
 /**
  * FiberHub ISP - Authentication Module
- * Supports: Admin, Billing Staff, Technician, Customer (User)
+ * Real Firebase + Self Registration
  */
 
 const ROLES = {
@@ -10,13 +10,60 @@ const ROLES = {
   CUSTOMER: "customer"
 };
 
-// Demo users (for testing without Firebase)
-const DEMO_USERS = {
-  "admin@fiberhub.com": { password: "admin123", role: ROLES.ADMIN, name: "Admin User", uid: "demo-admin" },
-  "billing@fiberhub.com": { password: "billing123", role: ROLES.BILLING, name: "Billing Staff", uid: "demo-billing" },
-  "tech@fiberhub.com": { password: "tech123", role: ROLES.TECHNICIAN, name: "Technician", uid: "demo-tech" },
-  "user@fiberhub.com": { password: "user123", role: ROLES.CUSTOMER, name: "Customer User", uid: "demo-customer" }
-};
+/**
+ * Register new customer
+ */
+async function register(name, email, phone, password) {
+  email = email.trim().toLowerCase();
+  name = name.trim();
+  phone = (phone || "").trim();
+
+  if (!auth || !db) {
+    return { success: false, error: "Firebase not connected" };
+  }
+
+  if (password.length < 6) {
+    return { success: false, error: "Password must be at least 6 characters" };
+  }
+
+  try {
+    // Create Auth account
+    const result = await auth.createUserWithEmailAndPassword(email, password);
+    const uid = result.user.uid;
+
+    // Create Firestore user document (auto tracking)
+    await db.collection("users").doc(uid).set({
+      name: name,
+      email: email,
+      phone: phone,
+      role: ROLES.CUSTOMER,
+      uid: uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Update display name
+    try {
+      await result.user.updateProfile({ displayName: name });
+    } catch (e) {}
+
+    // Auto login after register
+    const session = {
+      uid: uid,
+      email: email,
+      name: name,
+      role: ROLES.CUSTOMER,
+      phone: phone,
+      loginAt: Date.now()
+    };
+    saveSession(session, true);
+
+    return { success: true, user: session };
+  } catch (error) {
+    console.error("Register error:", error);
+    return { success: false, error: getFriendlyError(error.code) };
+  }
+}
 
 /**
  * Login with email/password
@@ -24,24 +71,10 @@ const DEMO_USERS = {
 async function login(email, password, remember = false) {
   email = email.trim().toLowerCase();
 
-  // Demo mode
-  if (isDemoMode()) {
-    const user = DEMO_USERS[email];
-    if (user && user.password === password) {
-      const session = {
-        uid: user.uid,
-        email: email,
-        name: user.name,
-        role: user.role,
-        loginAt: Date.now()
-      };
-      saveSession(session, remember);
-      return { success: true, user: session };
-    }
-    return { success: false, error: "Invalid email or password (Demo mode)" };
+  if (!auth) {
+    return { success: false, error: "Firebase not connected. Check firebase-config.js" };
   }
 
-  // Real Firebase Auth
   try {
     const persistence = remember
       ? firebase.auth.Auth.Persistence.LOCAL
@@ -50,15 +83,27 @@ async function login(email, password, remember = false) {
     await auth.setPersistence(persistence);
     const result = await auth.signInWithEmailAndPassword(email, password);
     
-    // Get user role from Firestore
+    // Get user details from Firestore
     const userDoc = await db.collection("users").doc(result.user.uid).get();
     let role = ROLES.CUSTOMER;
     let name = result.user.displayName || email.split("@")[0];
+    let phone = "";
 
     if (userDoc.exists) {
       const data = userDoc.data();
       role = data.role || ROLES.CUSTOMER;
       name = data.name || name;
+      phone = data.phone || "";
+    } else {
+      // Auto-create if missing
+      await db.collection("users").doc(result.user.uid).set({
+        name: name,
+        email: email,
+        role: ROLES.CUSTOMER,
+        phone: "",
+        uid: result.user.uid,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
     }
 
     const session = {
@@ -66,6 +111,7 @@ async function login(email, password, remember = false) {
       email: result.user.email,
       name: name,
       role: role,
+      phone: phone,
       loginAt: Date.now()
     };
     saveSession(session, remember);
@@ -76,33 +122,14 @@ async function login(email, password, remember = false) {
   }
 }
 
-/**
- * Login with OTP (placeholder - implement with Firebase Phone Auth)
- */
-async function loginWithOTP(phone) {
-  // TODO: Implement Firebase Phone Authentication
-  showToast("OTP Login coming soon. Use email login for now.", "info");
-  return { success: false, error: "OTP not configured yet" };
-}
-
-/**
- * Logout
- */
 async function logout() {
   clearSession();
-  if (!isDemoMode() && auth) {
-    try {
-      await auth.signOut();
-    } catch (e) {
-      console.error("Sign out error:", e);
-    }
+  if (auth) {
+    try { await auth.signOut(); } catch (e) {}
   }
   window.location.href = "index.html";
 }
 
-/**
- * Get current user session
- */
 function getCurrentUser() {
   try {
     const data = localStorage.getItem("fh_session") || sessionStorage.getItem("fh_session");
@@ -111,25 +138,16 @@ function getCurrentUser() {
   return null;
 }
 
-/**
- * Check if user is logged in
- */
 function isLoggedIn() {
   return !!getCurrentUser();
 }
 
-/**
- * Check role access
- */
 function hasRole(...roles) {
   const user = getCurrentUser();
   if (!user) return false;
   return roles.includes(user.role);
 }
 
-/**
- * Protect page - redirect if not logged in or wrong role
- */
 function protectPage(allowedRoles = []) {
   const user = getCurrentUser();
   if (!user) {
@@ -144,7 +162,6 @@ function protectPage(allowedRoles = []) {
   return true;
 }
 
-// Helpers
 function saveSession(session, remember) {
   const str = JSON.stringify(session);
   if (remember) {
@@ -166,14 +183,16 @@ function getFriendlyError(code) {
     "auth/user-not-found": "No account found with this email",
     "auth/wrong-password": "Incorrect password",
     "auth/invalid-email": "Invalid email address",
+    "auth/email-already-in-use": "This email is already registered",
+    "auth/weak-password": "Password is too weak (min 6 characters)",
     "auth/too-many-requests": "Too many attempts. Try again later",
     "auth/network-request-failed": "Network error. Check your connection",
-    "auth/invalid-credential": "Invalid email or password"
+    "auth/invalid-credential": "Invalid email or password",
+    "auth/user-disabled": "This account has been disabled"
   };
-  return map[code] || "Login failed. Please try again.";
+  return map[code] || "Something went wrong. Please try again.";
 }
 
-// Toast helper (shared)
 function showToast(message, type = "info") {
   let container = document.querySelector(".toast-container");
   if (!container) {
