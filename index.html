@@ -1,772 +1,153 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FiberHub ISP Manager</title>
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        :root {
-            --bg: #0a0e17;
-            --card: #131b2e;
-            --primary: #00d4ff;
-            --secondary: #ff6b6b;
-            --text: #e0e6f0;
-            --text2: #8899bb;
-            --shadow: 0 8px 32px rgba(0, 212, 255, 0.15);
-            --radius: 16px;
-        }
-        body {
-            font-family: 'Segoe UI', system-ui, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            padding: 20px;
-        }
-        .app-container {
-            width: 100%;
-            max-width: 1400px;
-            background: var(--bg);
-            border-radius: var(--radius);
-            box-shadow: var(--shadow);
-            overflow: hidden;
-        }
-        /* Login Page */
-        .login-page {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            background: radial-gradient(circle at 30% 20%, #0f1a2e, #060a12);
-        }
-        .login-box {
-            background: var(--card);
-            padding: 48px 40px;
-            border-radius: var(--radius);
-            width: 100%;
-            max-width: 440px;
-            box-shadow: var(--shadow);
-            border: 1px solid rgba(0, 212, 255, 0.2);
-        }
-        .login-box h1 {
-            font-size: 28px;
-            font-weight: 700;
-            background: linear-gradient(135deg, #00d4ff, #7b61ff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 8px;
-        }
-        .login-box .sub {
-            color: var(--text2);
-            margin-bottom: 32px;
-            font-size: 14px;
-        }
-        .input-group {
-            margin-bottom: 20px;
-        }
-        .input-group label {
-            display: block;
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text2);
-            margin-bottom: 6px;
-        }
-        .input-group input, .input-group select {
-            width: 100%;
-            padding: 14px 16px;
-            background: #0f1a2e;
-            border: 1px solid #1e2d45;
-            border-radius: 12px;
-            color: #fff;
-            font-size: 15px;
-            transition: 0.3s;
-        }
-        .input-group input:focus {
-            border-color: var(--primary);
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.2);
-        }
-        .login-options {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin: 16px 0 24px;
-        }
-        .login-options label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 14px;
-            color: var(--text2);
-            cursor: pointer;
-        }
-        .login-options a {
-            color: var(--primary);
-            font-size: 14px;
-            text-decoration: none;
-        }
-        .btn-primary {
-            width: 100%;
-            padding: 16px;
-            background: linear-gradient(135deg, #00d4ff, #7b61ff);
-            border: none;
-            border-radius: 12px;
-            color: #fff;
-            font-size: 16px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: 0.3s;
-        }
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(0, 212, 255, 0.3);
-        }
-        .or-divider {
-            text-align: center;
-            color: var(--text2);
-            font-size: 13px;
-            margin: 20px 0;
-            position: relative;
-        }
-        .or-divider::before, .or-divider::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            width: 30%;
-            height: 1px;
-            background: #1e2d45;
-        }
-        .or-divider::before { left: 0; }
-        .or-divider::after { right: 0; }
-        .btn-otp {
-            width: 100%;
-            padding: 14px;
-            background: transparent;
-            border: 1px solid #1e2d45;
-            border-radius: 12px;
-            color: var(--text);
-            font-size: 15px;
-            cursor: pointer;
-            transition: 0.3s;
-        }
-        .btn-otp:hover { background: #0f1a2e; }
-        .footer-links {
-            text-align: center;
-            margin-top: 24px;
-            font-size: 14px;
-            color: var(--text2);
-        }
-        .footer-links a {
-            color: var(--primary);
-            text-decoration: none;
-        }
-        /* Dashboard */
-        .dashboard {
-            display: none;
-            padding: 24px;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 16px 24px;
-            background: var(--card);
-            border-radius: var(--radius);
-            margin-bottom: 24px;
-        }
-        .header h2 {
-            font-size: 20px;
-            background: linear-gradient(135deg, #00d4ff, #7b61ff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .header-actions {
-            display: flex;
-            gap: 12px;
-        }
-        .header-actions button {
-            padding: 8px 16px;
-            background: #0f1a2e;
-            border: 1px solid #1e2d45;
-            border-radius: 8px;
-            color: var(--text);
-            cursor: pointer;
-            transition: 0.3s;
-        }
-        .header-actions button:hover {
-            background: #1e2d45;
-        }
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        .stat-card {
-            background: var(--card);
-            padding: 20px;
-            border-radius: var(--radius);
-            border-left: 4px solid var(--primary);
-        }
-        .stat-card .number {
-            font-size: 28px;
-            font-weight: 700;
-            background: linear-gradient(135deg, #00d4ff, #7b61ff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .stat-card .label {
-            font-size: 13px;
-            color: var(--text2);
-            margin-top: 4px;
-        }
-        .main-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 24px;
-        }
-        .card {
-            background: var(--card);
-            padding: 20px;
-            border-radius: var(--radius);
-            margin-bottom: 24px;
-        }
-        .card h3 {
-            font-size: 16px;
-            margin-bottom: 16px;
-            color: var(--text);
-        }
-        .table-wrap {
-            overflow-x: auto;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-        th {
-            text-align: left;
-            color: var(--text2);
-            padding: 10px 8px;
-            border-bottom: 1px solid #1e2d45;
-        }
-        td {
-            padding: 10px 8px;
-            border-bottom: 1px solid #0f1a2e;
-        }
-        .badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .badge.active { background: #00d4ff22; color: #00d4ff; }
-        .badge.suspended { background: #ff6b6b22; color: #ff6b6b; }
-        .badge.pending { background: #ffd93d22; color: #ffd93d; }
-        .badge.resolved { background: #6bcb7722; color: #6bcb77; }
-        .tab-bar {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-bottom: 20px;
-        }
-        .tab-bar button {
-            padding: 8px 18px;
-            background: #0f1a2e;
-            border: 1px solid #1e2d45;
-            border-radius: 20px;
-            color: var(--text2);
-            cursor: pointer;
-            transition: 0.3s;
-        }
-        .tab-bar button.active {
-            background: var(--primary);
-            color: #000;
-            border-color: var(--primary);
-        }
-        .hidden { display: none !important; }
-        /* Responsive */
-        @media (max-width: 768px) {
-            .main-grid { grid-template-columns: 1fr; }
-            .login-box { padding: 32px 20px; }
-            .stats-grid { grid-template-columns: 1fr 1fr; }
-        }
-        @media (max-width: 480px) {
-            .stats-grid { grid-template-columns: 1fr; }
-        }
-        /* Scrollbar */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #0f1a2e; }
-        ::-webkit-scrollbar-thumb { background: #1e2d45; border-radius: 10px; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0a1628" />
+  <meta name="description" content="FiberHub ISP - Manage Your Network with Confidence" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>FiberHub ISP - Login</title>
+  
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="assets/logo.png" />
+  <link rel="apple-touch-icon" href="assets/logo.png" />
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/themes.css" />
 </head>
-<body>
-    <div class="app-container" id="app">
-        <!-- Login Page -->
-        <div id="loginPage" class="login-page">
-            <div class="login-box">
-                <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-                    <span style="font-size:32px;">🌐</span>
-                    <h1>FiberHub</h1>
-                </div>
-                <div class="sub">Manage Your Network with Confidence.</div>
-                <div style="margin-bottom:24px;">
-                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                        <span class="badge active">Admin</span>
-                        <span class="badge" style="background:#7b61ff22;color:#7b61ff;">Billing</span>
-                        <span class="badge" style="background:#ffd93d22;color:#ffd93d;">Technician</span>
-                        <span class="badge" style="background:#6bcb7722;color:#6bcb77;">User</span>
-                    </div>
-                </div>
-                <div class="input-group">
-                    <label>Email / Username / Mobile</label>
-                    <input type="text" id="loginEmail" placeholder="Enter your credential" value="admin@fiberhub.com">
-                </div>
-                <div class="input-group">
-                    <label>Password</label>
-                    <input type="password" id="loginPassword" placeholder="••••••••" value="admin123">
-                </div>
-                <div class="login-options">
-                    <label><input type="checkbox" checked> Remember Me</label>
-                    <a href="#">Forgot Password?</a>
-                </div>
-                <button class="btn-primary" id="loginBtn">Login</button>
-                <div class="or-divider">or continue with</div>
-                <button class="btn-otp" id="otpLoginBtn">📱 Login with OTP</button>
-                <div class="footer-links">
-                    New User? <a href="#">Register Now</a> · <a href="#">Need Help?</a>
-                </div>
-            </div>
-        </div>
+<body class="login-page dark-theme">
+  <!-- Background -->
+  <div class="login-bg">
+    <div class="bg-overlay"></div>
+    <div class="fiber-lines"></div>
+  </div>
 
-        <!-- Dashboard -->
-        <div id="dashboard" class="dashboard">
-            <div class="header">
-                <h2>📊 Dashboard</h2>
-                <div class="header-actions">
-                    <button id="themeToggle">🌙</button>
-                    <button id="logoutBtn">🚪 Logout</button>
-                </div>
-            </div>
+  <!-- Theme Toggle -->
+  <button id="themeToggle" class="theme-toggle" title="Toggle Theme">
+    <svg class="sun-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    <svg class="moon-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+  </button>
 
-            <!-- Stats -->
-            <div class="stats-grid" id="statsGrid">
-                <div class="stat-card"><div class="number" id="totalCustomers">0</div><div class="label">👥 Total Customers</div></div>
-                <div class="stat-card" style="border-color:#6bcb77;"><div class="number" id="activeConnections">0</div><div class="label">🟢 Active Connections</div></div>
-                <div class="stat-card" style="border-color:#ff6b6b;"><div class="number" id="suspendedConnections">0</div><div class="label">🔴 Suspended</div></div>
-                <div class="stat-card" style="border-color:#ffd93d;"><div class="number" id="monthlyIncome">$0</div><div class="label">💰 Monthly Income</div></div>
-                <div class="stat-card" style="border-color:#ff9f43;"><div class="number" id="pendingBills">0</div><div class="label">📄 Pending Bills</div></div>
-                <div class="stat-card" style="border-color:#7b61ff;"><div class="number" id="openComplaints">0</div><div class="label">🛠 Open Complaints</div></div>
-            </div>
-
-            <!-- Tabs -->
-            <div class="tab-bar">
-                <button class="active" data-tab="customers">👥 Customers</button>
-                <button data-tab="billing">💵 Billing</button>
-                <button data-tab="complaints">🛠 Complaints</button>
-                <button data-tab="network">🌐 Network</button>
-                <button data-tab="technician">👨‍🔧 Technician</button>
-                <button data-tab="reports">📈 Reports</button>
-                <button data-tab="settings">⚙️ Settings</button>
-            </div>
-
-            <!-- Tab Content -->
-            <div id="tabContent">
-                <!-- Customers -->
-                <div id="customers" class="tab-panel">
-                    <div class="card">
-                        <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px;">
-                            <h3>👥 Customer Management</h3>
-                            <button class="btn-primary" style="width:auto;padding:8px 20px;" id="addCustomerBtn">+ New Customer</button>
-                        </div>
-                        <div class="table-wrap">
-                            <table>
-                                <thead><tr><th>Name</th><th>CNIC</th><th>Package</th><th>Status</th><th>Action</th></tr></thead>
-                                <tbody id="customerTableBody">
-                                    <tr><td colspan="5" style="text-align:center;color:var(--text2);">Loading customers...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-                <!-- Billing -->
-                <div id="billing" class="tab-panel hidden">
-                    <div class="card">
-                        <h3>💵 Billing & Payments</h3>
-                        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
-                            <button class="btn-primary" style="width:auto;padding:8px 16px;" id="autoBillBtn">⚡ Auto Generate</button>
-                            <button class="btn-primary" style="width:auto;padding:8px 16px;background:#7b61ff;" id="manualBillBtn">📝 Manual Bill</button>
-                            <button class="btn-primary" style="width:auto;padding:8px 16px;background:#ffd93d;color:#000;" id="easyPaisaBtn">📱 EasyPaisa</button>
-                            <button class="btn-primary" style="width:auto;padding:8px 16px;background:#ff6b6b;" id="jazzCashBtn">📱 JazzCash</button>
-                        </div>
-                        <div class="table-wrap">
-                            <table>
-                                <thead><tr><th>Customer</th><th>Amount</th><th>Due Date</th><th>Status</th><th>Action</th></tr></thead>
-                                <tbody id="billingTableBody">
-                                    <tr><td colspan="5" style="text-align:center;color:var(--text2);">No bills yet</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-                <!-- Complaints -->
-                <div id="complaints" class="tab-panel hidden">
-                    <div class="card">
-                        <h3>🛠 Complaint System</h3>
-                        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
-                            <input type="text" placeholder="Search by Customer/ID" id="complaintSearch" style="background:#0f1a2e;border:1px solid #1e2d45;border-radius:8px;padding:8px 14px;color:#fff;flex:1;">
-                            <button class="btn-primary" style="width:auto;padding:8px 16px;" id="addComplaintBtn">+ New Complaint</button>
-                        </div>
-                        <div class="table-wrap">
-                            <table>
-                                <thead><tr><th>ID</th><th>Customer</th><th>Issue</th><th>Status</th><th>Technician</th></tr></thead>
-                                <tbody id="complaintTableBody">
-                                    <tr><td colspan="5" style="text-align:center;color:var(--text2);">No complaints</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-                <!-- Network -->
-                <div id="network" class="tab-panel hidden">
-                    <div class="card">
-                        <h3>🌐 Network Infrastructure</h3>
-                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:12px;">
-                            <div class="stat-card" style="border-color:#00d4ff;"><div class="number">3</div><div class="label">OLT</div></div>
-                            <div class="stat-card" style="border-color:#7b61ff;"><div class="number">12</div><div class="label">PON Ports</div></div>
-                            <div class="stat-card" style="border-color:#ffd93d;"><div class="number">8</div><div class="label">Splitters</div></div>
-                            <div class="stat-card" style="border-color:#6bcb77;"><div class="number">45</div><div class="label">Fiber Cables</div></div>
-                            <div class="stat-card" style="border-color:#ff6b6b;"><div class="number">24</div><div class="label">ONU Stock</div></div>
-                            <div class="stat-card" style="border-color:#ff9f43;"><div class="number">18</div><div class="label">Router Stock</div></div>
-                        </div>
-                    </div>
-                </div>
-                <!-- Technician -->
-                <div id="technician" class="tab-panel hidden">
-                    <div class="card">
-                        <h3>👨‍🔧 Technician Panel</h3>
-                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
-                            <div class="stat-card" style="border-color:#00d4ff;"><div class="number">5</div><div class="label">Assigned Jobs</div></div>
-                            <div class="stat-card" style="border-color:#6bcb77;"><div class="number">3</div><div class="label">Installation</div></div>
-                            <div class="stat-card" style="border-color:#ffd93d;"><div class="number">2</div><div class="label">Maintenance</div></div>
-                            <div class="stat-card" style="border-color:#7b61ff;"><div class="number">4</div><div class="label">Complaint Resolution</div></div>
-                        </div>
-                        <div class="table-wrap" style="margin-top:16px;">
-                            <table><thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Technician</th></tr></thead>
-                            <tbody><tr><td>Install #102</td><td>Installation</td><td><span class="badge pending">In Progress</span></td><td>Ali Khan</td></tr>
-                            <tr><td>Repair #45</td><td>Maintenance</td><td><span class="badge active">Resolved</span></td><td>Zara Ahmed</td></tr>
-                            </tbody></table>
-                        </div>
-                    </div>
-                </div>
-                <!-- Reports -->
-                <div id="reports" class="tab-panel hidden">
-                    <div class="card">
-                        <h3>📈 Reports & Analytics</h3>
-                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;">
-                            <button class="btn-primary" style="width:auto;padding:8px 12px;background:#0f1a2e;border:1px solid #1e2d45;">📊 Daily Collection</button>
-                            <button class="btn-primary" style="width:auto;padding:8px 12px;background:#0f1a2e;border:1px solid #1e2d45;">📅 Monthly Collection</button>
-                            <button class="btn-primary" style="width:auto;padding:8px 12px;background:#0f1a2e;border:1px solid #1e2d45;">💸 Expenses</button>
-                            <button class="btn-primary" style="width:auto;padding:8px 12px;background:#0f1a2e;border:1px solid #1e2d45;">📈 Profit/Loss</button>
-                        </div>
-                        <div style="height:200px;background:#0f1a2e;border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--text2);">
-                            <canvas id="revenueChart" width="400" height="200"></canvas>
-                        </div>
-                    </div>
-                </div>
-                <!-- Settings -->
-                <div id="settings" class="tab-panel hidden">
-                    <div class="card">
-                        <h3>⚙️ Settings</h3>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;">
-                            <div><label style="color:var(--text2);">Packages</label><input value="Basic, Premium, Business" style="width:100%;background:#0f1a2e;border:1px solid #1e2d45;border-radius:8px;padding:8px;color:#fff;"></div>
-                            <div><label style="color:var(--text2);">Areas</label><input value="North, South, East, West" style="width:100%;background:#0f1a2e;border:1px solid #1e2d45;border-radius:8px;padding:8px;color:#fff;"></div>
-                            <div><label style="color:var(--text2);">SMS Templates</label><input value="Welcome, Due Reminder" style="width:100%;background:#0f1a2e;border:1px solid #1e2d45;border-radius:8px;padding:8px;color:#fff;"></div>
-                            <div><label style="color:var(--text2);">WhatsApp Templates</label><input value="Bill, Promo" style="width:100%;background:#0f1a2e;border:1px solid #1e2d45;border-radius:8px;padding:8px;color:#fff;"></div>
-                            <div style="grid-column:1/-1;"><button class="btn-primary" style="width:auto;padding:8px 20px;">💾 Backup / Restore</button></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+  <!-- Main Login Container -->
+  <div class="login-wrapper">
+    <!-- Logo Section -->
+    <div class="login-logo">
+      <img src="assets/logo.png" alt="FiberHub ISP" class="logo-img" />
+      <h1 class="brand-name">Fiber<span>Hub</span></h1>
+      <div class="brand-tagline">
+        <span class="line"></span>
+        <span class="isp-text">ISP</span>
+        <span class="line"></span>
+      </div>
+      <p class="tagline">Manage Your Network with Confidence.</p>
     </div>
 
-    <script>
-    // Firebase Config (Replace with your own)
-    const firebaseConfig = {
-        apiKey: "AIzaSyDummyKeyReplaceWithYourOwn",
-        authDomain: "your-project.firebaseapp.com",
-        projectId: "your-project",
-        storageBucket: "your-project.appspot.com",
-        messagingSenderId: "123456789",
-        appId: "1:123456789:web:abcdef"
-    };
+    <!-- Login Card -->
+    <div class="login-card">
+      <div class="user-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+      </div>
+      
+      <h2 class="login-title">Welcome Back!</h2>
+      <p class="login-subtitle">Sign in to your account</p>
 
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db = firebase.firestore();
-    const storage = firebase.storage();
+      <!-- Login Form -->
+      <form id="loginForm" class="login-form">
+        <div class="form-group">
+          <div class="input-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          </div>
+          <input type="text" id="email" placeholder="Email / Username / Mobile" required autocomplete="username" />
+        </div>
 
-    // DOM Elements
-    const loginPage = document.getElementById('loginPage');
-    const dashboard = document.getElementById('dashboard');
-    const loginBtn = document.getElementById('loginBtn');
-    const logoutBtn = document.getElementById('logoutBtn');
-    const loginEmail = document.getElementById('loginEmail');
-    const loginPassword = document.getElementById('loginPassword');
-    const otpLoginBtn = document.getElementById('otpLoginBtn');
+        <div class="form-group">
+          <div class="input-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <input type="password" id="password" placeholder="Password" required autocomplete="current-password" />
+          <button type="button" class="toggle-password" id="togglePassword" title="Show/Hide Password">
+            <svg class="eye-open" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="eye-closed" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+          </button>
+        </div>
 
-    // Sample Data (for demo)
-    let customers = [
-        { id: 1, name: 'Ahmed Raza', cnic: '12345-6789012-3', pkg: 'Premium', status: 'Active' },
-        { id: 2, name: 'Sana Khan', cnic: '23456-7890123-4', pkg: 'Basic', status: 'Suspended' },
-        { id: 3, name: 'Usman Ali', cnic: '34567-8901234-5', pkg: 'Business', status: 'Active' },
-    ];
+        <div class="form-options">
+          <label class="remember-me">
+            <input type="checkbox" id="rememberMe" />
+            <span>Remember Me</span>
+          </label>
+          <a href="#" class="forgot-link" id="forgotPassword">Forgot Password?</a>
+        </div>
 
-    let bills = [
-        { customer: 'Ahmed Raza', amount: 2500, due: '2026-09-15', status: 'Pending' },
-        { customer: 'Sana Khan', amount: 1500, due: '2026-08-10', status: 'Paid' },
-    ];
+        <button type="submit" class="btn-login" id="loginBtn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span>Login</span>
+        </button>
+      </form>
 
-    let complaints = [
-        { id: 'CMP-001', customer: 'Usman Ali', issue: 'No Internet', status: 'In Progress', tech: 'Ali Khan' },
-        { id: 'CMP-002', customer: 'Ahmed Raza', issue: 'Slow Speed', status: 'Resolved', tech: 'Zara Ahmed' },
-    ];
+      <div class="divider">
+        <span>or continue with</span>
+      </div>
 
-    // Login Handler
-    loginBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        const email = loginEmail.value.trim();
-        const pass = loginPassword.value.trim();
-        if (email && pass) {
-            // Demo login - skip firebase for speed
-            loginPage.style.display = 'none';
-            dashboard.style.display = 'block';
-            renderDashboard();
-        } else {
-            alert('Please enter credentials');
-        }
-    });
+      <button type="button" class="btn-otp" id="otpLoginBtn">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span>Login with OTP</span>
+      </button>
 
-    otpLoginBtn.addEventListener('click', () => {
-        alert('OTP login will be available soon.');
-    });
+      <!-- Role Quick Info (for demo) -->
+      <div class="demo-roles">
+        <p class="demo-title">Demo Roles (Firebase ready)</p>
+        <div class="role-badges">
+          <span class="badge admin">Admin</span>
+          <span class="badge billing">Billing</span>
+          <span class="badge tech">Technician</span>
+          <span class="badge user">Customer</span>
+        </div>
+      </div>
+    </div>
 
-    logoutBtn.addEventListener('click', () => {
-        auth.signOut();
-        loginPage.style.display = 'flex';
-        dashboard.style.display = 'none';
-    });
+    <!-- Features Footer -->
+    <div class="login-features">
+      <div class="feature-item">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>Customer<br>Management</span>
+      </div>
+      <div class="feature-item">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span>Billing &amp;<br>Payments</span>
+      </div>
+      <div class="feature-item">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        <span>Technician<br>Support</span>
+      </div>
+      <div class="feature-item">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <span>Reports &amp;<br>Analytics</span>
+      </div>
+    </div>
 
-    // Render Dashboard
-    function renderDashboard() {
-        document.getElementById('totalCustomers').textContent = customers.length;
-        document.getElementById('activeConnections').textContent = customers.filter(c => c.status === 'Active').length;
-        document.getElementById('suspendedConnections').textContent = customers.filter(c => c.status === 'Suspended').length;
-        document.getElementById('monthlyIncome').textContent = '$' + bills.reduce((sum, b) => sum + (b.status === 'Paid' ? b.amount : 0), 0);
-        document.getElementById('pendingBills').textContent = bills.filter(b => b.status === 'Pending').length;
-        document.getElementById('openComplaints').textContent = complaints.filter(c => c.status !== 'Resolved').length;
+    <div class="secure-badge">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      <span>Secure • Reliable • Fast</span>
+    </div>
+  </div>
 
-        renderCustomers();
-        renderBills();
-        renderComplaints();
-        initChart();
-    }
+  <!-- Version -->
+  <div class="app-version" id="appVersion">v1.0.0</div>
 
-    function renderCustomers() {
-        const tbody = document.getElementById('customerTableBody');
-        if (customers.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text2);">No customers added</td></tr>`;
-            return;
-        }
-        tbody.innerHTML = customers.map(c => `
-            <tr>
-                <td>${c.name}</td>
-                <td>${c.cnic}</td>
-                <td>${c.pkg}</td>
-                <td><span class="badge ${c.status.toLowerCase()}">${c.status}</span></td>
-                <td><button onclick="editCustomer(${c.id})" style="background:#0f1a2e;border:1px solid #1e2d45;border-radius:4px;padding:4px 10px;color:var(--text);cursor:pointer;">Edit</button>
-                <button onclick="deleteCustomer(${c.id})" style="background:#ff6b6b22;border:1px solid #ff6b6b44;border-radius:4px;padding:4px 10px;color:#ff6b6b;cursor:pointer;">Delete</button></td>
-            </tr>
-        `).join('');
-    }
-
-    function renderBills() {
-        const tbody = document.getElementById('billingTableBody');
-        if (bills.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text2);">No bills generated</td></tr>`;
-            return;
-        }
-        tbody.innerHTML = bills.map(b => `
-            <tr>
-                <td>${b.customer}</td>
-                <td>$${b.amount}</td>
-                <td>${b.due}</td>
-                <td><span class="badge ${b.status.toLowerCase()}">${b.status}</span></td>
-                <td><button onclick="printBill('${b.customer}')" style="background:#0f1a2e;border:1px solid #1e2d45;border-radius:4px;padding:4px 10px;color:var(--text);cursor:pointer;">🖨️ Print</button>
-                <button onclick="downloadPDF('${b.customer}')" style="background:#0f1a2e;border:1px solid #1e2d45;border-radius:4px;padding:4px 10px;color:var(--text);cursor:pointer;">📄 PDF</button></td>
-            </tr>
-        `).join('');
-    }
-
-    function renderComplaints() {
-        const tbody = document.getElementById('complaintTableBody');
-        if (complaints.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text2);">No complaints registered</td></tr>`;
-            return;
-        }
-        tbody.innerHTML = complaints.map(c => `
-            <tr>
-                <td>${c.id}</td>
-                <td>${c.customer}</td>
-                <td>${c.issue}</td>
-                <td><span class="badge ${c.status.toLowerCase().replace(' ', '')}">${c.status}</span></td>
-                <td>${c.tech}</td>
-            </tr>
-        `).join('');
-    }
-
-    function initChart() {
-        const ctx = document.getElementById('revenueChart')?.getContext('2d');
-        if (ctx) {
-            new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-                    datasets: [{
-                        label: 'Revenue',
-                        data: [1200, 1900, 1500, 2200, 2800, 3100],
-                        borderColor: '#00d4ff',
-                        backgroundColor: 'rgba(0,212,255,0.1)',
-                        tension: 0.4,
-                        fill: true
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: { legend: { labels: { color: '#8899bb' } } },
-                    scales: { x: { ticks: { color: '#8899bb' } }, y: { ticks: { color: '#8899bb' } } }
-                }
-            });
-        }
-    }
-
-    // Tab switching
-    document.querySelectorAll('.tab-bar button').forEach(btn => {
-        btn.addEventListener('click', function() {
-            document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            const tab = this.dataset.tab;
-            document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
-            document.getElementById(tab).classList.remove('hidden');
-        });
-    });
-
-    // Add Customer (demo)
-    document.getElementById('addCustomerBtn')?.addEventListener('click', () => {
-        const name = prompt('Customer Name:');
-        if (name) {
-            customers.push({ id: Date.now(), name, cnic: 'XXXXX-XXXXXXX-X', pkg: 'Basic', status: 'Active' });
-            renderDashboard();
-        }
-    });
-
-    window.editCustomer = (id) => {
-        const c = customers.find(x => x.id === id);
-        if (c) {
-            const newName = prompt('Edit Name:', c.name);
-            if (newName) c.name = newName;
-            renderDashboard();
-        }
-    };
-
-    window.deleteCustomer = (id) => {
-        if (confirm('Delete this customer?')) {
-            customers = customers.filter(x => x.id !== id);
-            renderDashboard();
-        }
-    };
-
-    window.printBill = (customer) => {
-        alert(`Printing bill for ${customer} (demo)`);
-    };
-
-    window.downloadPDF = (customer) => {
-        alert(`Downloading PDF for ${customer} (demo)`);
-    };
-
-    // Auto Bill Generate
-    document.getElementById('autoBillBtn')?.addEventListener('click', () => {
-        customers.forEach(c => {
-            bills.push({ customer: c.name, amount: Math.floor(Math.random()*3000+1000), due: '2026-10-01', status: 'Pending' });
-        });
-        renderDashboard();
-        alert('Bills auto-generated for all customers.');
-    });
-
-    // Manual Bill
-    document.getElementById('manualBillBtn')?.addEventListener('click', () => {
-        const cust = prompt('Customer Name:');
-        if (cust) {
-            const amt = prompt('Amount:');
-            bills.push({ customer: cust, amount: parseInt(amt) || 0, due: '2026-10-15', status: 'Pending' });
-            renderDashboard();
-        }
-    });
-
-    // EasyPaisa / JazzCash
-    document.getElementById('easyPaisaBtn')?.addEventListener('click', () => alert('EasyPaisa entry demo'));
-    document.getElementById('jazzCashBtn')?.addEventListener('click', () => alert('JazzCash entry demo'));
-
-    // Complaint Add
-    document.getElementById('addComplaintBtn')?.addEventListener('click', () => {
-        const cust = prompt('Customer Name:');
-        if (cust) {
-            const issue = prompt('Issue:');
-            complaints.push({ id: 'CMP-' + String(complaints.length+1).padStart(3, '0'), customer: cust, issue: issue || 'General', status: 'Pending', tech: 'Unassigned' });
-            renderDashboard();
-        }
-    });
-
-    // Theme Toggle
-    document.getElementById('themeToggle')?.addEventListener('click', function() {
-        document.body.style.background = document.body.style.background === 'rgb(10, 14, 23)' ? '#f0f4fa' : '#0a0e17';
-        document.body.style.color = document.body.style.color === 'rgb(224, 230, 240)' ? '#0a0e17' : '#e0e6f0';
-        this.textContent = this.textContent === '🌙' ? '☀️' : '🌙';
-    });
-
-    // PWA - Service Worker Registration
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js')
-        .then(() => console.log('SW registered'))
-        .catch(() => console.log('SW failed'));
-    }
-
-    // Auto login if already authenticated
-    auth.onAuthStateChanged(user => {
-        if (user) {
-            loginPage.style.display = 'none';
-            dashboard.style.display = 'block';
-            renderDashboard();
-        } else {
-            loginPage.style.display = 'flex';
-            dashboard.style.display = 'none';
-        }
-    });
-
-    // Initial render (demo)
-    renderDashboard();
-    </script>
+  <!-- Scripts -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>
