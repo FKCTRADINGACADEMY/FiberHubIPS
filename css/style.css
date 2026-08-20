@@ -31,7 +31,7 @@ html, body {
 }
 
 body {
-  overflow-x: hidden;
+  overflow-x: clip; /* clip page-level overflow but allow inner table-wrapper scroll */
 }
 
 /* ========== LOGIN PAGE ========== */
@@ -755,15 +755,29 @@ body {
   color: var(--text-primary);
 }
 
-/* Tables */
+/* Tables – always allow left-right scroll on mobile */
 .table-wrapper {
   overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+  max-width: 100%;
+  display: block;
+  margin-bottom: 4px;
+}
+.table-wrapper::-webkit-scrollbar {
+  height: 6px;
+}
+.table-wrapper::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
+  min-width: 520px; /* force horizontal scroll on narrow screens */
 }
 
 th, td {
@@ -1208,10 +1222,15 @@ img, svg {
 /* Extra mobile safety for tables & complaint actions */
 @media (max-width: 600px) {
   .table-wrapper {
-    margin: 0 -4px;
+    margin: 0 -8px;
+    padding: 0 4px;
   }
   table {
-    min-width: 480px; /* force horizontal scroll instead of crushing columns */
+    min-width: 560px; /* clear left-right scroll, no cut-off */
+  }
+  th, td {
+    padding: 10px 10px;
+    white-space: nowrap;
   }
   .complaint-card-header {
     flex-direction: column;
