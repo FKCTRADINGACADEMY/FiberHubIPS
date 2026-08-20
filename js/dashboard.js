@@ -1152,7 +1152,25 @@ async function saveCustomer() {
 
       showToast("Customer + Login created! Email: " + data.email + " | Password: " + password, "success");
       logActivity("customer", "New customer created: " + data.name);
-      alert("Customer Login Details:\n\nEmail: " + data.email + "\nPassword: " + password + "\n\nYe customer ko de dein.");
+
+      // Welcome message via WhatsApp + SMS (account / connection ready)
+      const welcomeMsg = await buildWelcomeMessage(data.name, data.package, data.email, password);
+      if (data.phone) {
+        // Show action modal so staff can send both
+        showModal("Account Created — Notify Customer", `
+          <p style="margin-bottom:12px;">Customer: <strong>${data.name}</strong><br>
+          Email: <strong>${data.email}</strong><br>
+          Password: <strong>${password}</strong></p>
+          <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:12px;">Neeche se WhatsApp aur SMS bhej sakte ho — customer ko pata chal jayega account/connection ban gaya.</p>
+          <pre style="white-space:pre-wrap;background:var(--bg-main);padding:10px;border-radius:8px;font-size:0.85rem;">${welcomeMsg}</pre>
+        `, `
+          <button class="btn btn-primary" style="background:#25D366;border-color:#25D366;" onclick="openWhatsApp('${data.phone}', ${JSON.stringify(welcomeMsg)}); this.closest('.modal-overlay').classList.remove('active');">WhatsApp</button>
+          <button class="btn btn-outline" onclick="openSMS('${data.phone}', ${JSON.stringify(welcomeMsg)}); this.closest('.modal-overlay').classList.remove('active');">SMS</button>
+          <button class="btn btn-outline" onclick="this.closest('.modal-overlay').classList.remove('active')">Close</button>
+        `);
+      } else {
+        alert("Customer Login Details:\n\nEmail: " + data.email + "\nPassword: " + password + "\n\nPhone nahi — SMS/WA nahi bhej sakte.");
+      }
     }
     hideCustomerForm();
     loadCustomersList();
@@ -1216,6 +1234,7 @@ async function loadCustomersList() {
           <button class="btn btn-sm btn-outline" onclick="editCustomer('${d.id}')">Edit</button>
           <button class="btn btn-sm btn-outline" onclick="viewCustomerBills('${d.id}', '${(d.name || "").replace(/'/g, "")}')">Bills</button>
           ${phone ? `<button class="btn btn-sm btn-outline" style="color:#25D366;" onclick="openWhatsApp('${phone}', '${waMsg.replace(/'/g, "\\'")}')" title="WhatsApp">WA</button>` : ""}
+          ${phone ? `<button class="btn btn-sm btn-outline" onclick="openSMS('${phone}', '${waMsg.replace(/'/g, "\\'")}')" title="SMS">SMS</button>` : ""}
           ${d.email ? `<button class="btn btn-sm btn-outline" onclick="resetCustomerPassword('${d.email}')">Reset Pass</button>` : ""}
           <button class="btn btn-sm btn-outline" onclick="deleteCustomer('${d.id}')" style="color:var(--danger);">Del</button>
         </td>
@@ -1296,7 +1315,7 @@ async function editCustomer(id) {
 }
 
 async function deleteCustomer(id) {
-  if (!confirm("Delete this customer?\n\nCustomer record + login user bhi delete ho jayega.")) return;
+  if (!confirm("Delete this customer?\n\nCustomer record + login account dono delete / block ho jayenge.")) return;
   try {
     const doc = await db.collection("customers").doc(id).get();
     if (!doc.exists) {
@@ -1305,28 +1324,39 @@ async function deleteCustomer(id) {
     }
     const data = doc.data();
 
-    // Delete customer document
-    await db.collection("customers").doc(id).delete();
-
-    // Also remove from users collection (login profile)
-    if (data.uid) {
+    // 1) Disable + mark deleted on users profile (blocks login even if Auth still exists)
+    const disableUser = async (uid) => {
+      if (!uid) return;
       try {
-        await db.collection("users").doc(data.uid).delete();
+        await db.collection("users").doc(uid).set({
+          disabled: true,
+          deleted: true,
+          deletedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          deletedBy: user.uid || null
+        }, { merge: true });
+        // Then remove profile so login finds no doc
+        await db.collection("users").doc(uid).delete();
       } catch (e) {
-        console.warn("users delete:", e);
+        console.warn("users disable/delete:", e);
       }
+    };
+
+    if (data.uid) {
+      await disableUser(data.uid);
     } else if (data.email) {
-      // fallback: find by email
       try {
-        const q = await db.collection("users").where("email", "==", data.email).limit(1).get();
-        if (!q.empty) await q.docs[0].ref.delete();
+        const q = await db.collection("users").where("email", "==", data.email.toLowerCase()).limit(1).get();
+        if (!q.empty) await disableUser(q.docs[0].id);
       } catch (e) {}
     }
 
-    // Note: Firebase Auth account itself cannot be fully deleted from client-side
-    // without Admin SDK / Cloud Function. Users doc delete prevents login access via role check.
-    showToast("Customer + login profile deleted", "success");
-    logActivity("customer", "Customer deleted: " + (data.name || id));
+    // 2) Delete customer document
+    await db.collection("customers").doc(id).delete();
+
+    // Note: Firebase Auth user can only be fully removed via Admin SDK / Cloud Function.
+    // Without users/{uid} doc, login is rejected (see auth.js).
+    showToast("Customer + login account removed (login blocked)", "success");
+    logActivity("customer", "Customer deleted + login blocked: " + (data.name || id));
     loadCustomersList();
   } catch (e) {
     showToast("Delete failed: " + (e.message || ""), "error");
@@ -2939,6 +2969,49 @@ function openWhatsApp(phone, message = "") {
   const text = encodeURIComponent(message || "Assalam o Alaikum, FiberHub ISP se rabta kar rahe hain.");
   const url = `https://wa.me/${num}?text=${text}`;
   window.open(url, "_blank");
+}
+
+/** Open native SMS app with pre-filled body (works on mobile) */
+function openSMS(phone, message = "") {
+  let p = String(phone || "").replace(/[^0-9+]/g, "");
+  if (!p) {
+    showToast("Phone number not available", "error");
+    return;
+  }
+  // Prefer local 03xx for SMS on Pakistan phones
+  if (p.startsWith("92") && p.length >= 12) p = "0" + p.slice(2);
+  const body = encodeURIComponent(message || "Assalam o Alaikum, FiberHub ISP se rabta.");
+  // iOS uses &body= , Android often ?body=
+  const url = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+    ? `sms:${p}&body=${body}`
+    : `sms:${p}?body=${body}`;
+  window.location.href = url;
+}
+
+/** Welcome text when new customer account is created */
+async function buildWelcomeMessage(name, pkg, email, password) {
+  let tpl = "Assalam o Alaikum {name}, aapka FiberHub ISP account / connection ban gaya hai.\nPackage: {package}\nLogin Email: {email}\nPassword: {password}\nApp se login karke complaints aur bills dekh sakte hain.\nShukriya!";
+  try {
+    const doc = await db.collection("settings").doc("templates").get();
+    if (doc.exists && doc.data().welcome) {
+      tpl = doc.data().welcome;
+      // Ensure login credentials are included if template is short
+      if (!tpl.includes("{email}") && !tpl.includes("{password}")) {
+        tpl += "\nLogin: {email} / {password}";
+      }
+    }
+  } catch (e) {}
+  return applyTemplate(tpl, {
+    name: name || "Customer",
+    package: pkg || "-",
+    email: email || "-",
+    password: password || "-",
+    phone: "",
+    month: "",
+    amount: "",
+    issue: "",
+    status: ""
+  });
 }
 
 /** Create in-app notification for a customer */

@@ -30,25 +30,22 @@ async function login(email, password, remember = false) {
     const result = await auth.signInWithEmailAndPassword(email, password);
     
     const userDoc = await db.collection("users").doc(result.user.uid).get();
-    let role = ROLES.CUSTOMER;
-    let name = result.user.displayName || email.split("@")[0];
-    let phone = "";
 
-    if (userDoc.exists) {
-      const data = userDoc.data();
-      role = data.role || ROLES.CUSTOMER;
-      name = data.name || name;
-      phone = data.phone || "";
-    } else {
-      await db.collection("users").doc(result.user.uid).set({
-        name: name,
-        email: email,
-        role: ROLES.CUSTOMER,
-        phone: "",
-        uid: result.user.uid,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
+    // No profile / deleted account → block login (customer delete removes users doc)
+    if (!userDoc.exists) {
+      await auth.signOut();
+      return { success: false, error: "Account not found or deleted. Contact office." };
     }
+
+    const data = userDoc.data();
+    if (data.disabled === true || data.deleted === true) {
+      await auth.signOut();
+      return { success: false, error: "Account disabled or deleted. Contact office." };
+    }
+
+    const role = data.role || ROLES.CUSTOMER;
+    const name = data.name || result.user.displayName || email.split("@")[0];
+    const phone = data.phone || "";
 
     const session = {
       uid: result.user.uid,
