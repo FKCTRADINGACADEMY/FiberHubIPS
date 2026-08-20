@@ -20,7 +20,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function initTheme() {
-  const saved = localStorage.getItem("fh_theme") || "dark";
+  const saved = localStorage.getItem("fh_theme") || "light";
   setTheme(saved);
 
   const btn = document.getElementById("themeToggle");
