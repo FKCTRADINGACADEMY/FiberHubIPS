@@ -85,7 +85,10 @@ async function adminCreateUser(name, email, phone, password, role) {
 
   try {
     // Secondary app so admin session is not replaced
-    const secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
+    let secondaryApp;
+    try { secondaryApp = firebase.app("Secondary"); } catch (e) {
+      secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
+    }
     const secondaryAuth = secondaryApp.auth();
 
     const result = await secondaryAuth.createUserWithEmailAndPassword(email, password);

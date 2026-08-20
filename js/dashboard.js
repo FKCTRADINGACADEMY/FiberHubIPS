@@ -12,7 +12,15 @@ document.addEventListener("DOMContentLoaded", () => {
   setupUserInfo();
   setupSidebar();
   setupEvents();
-  loadModule("dashboard");
+  const startPage = user.role === "customer" ? "my-complaints"
+    : user.role === "technician" ? "technician"
+    : "dashboard";
+  loadModule(startPage);
+  setTimeout(() => {
+    document.querySelectorAll(".nav-item").forEach(i => {
+      i.classList.toggle("active", i.dataset.module === startPage);
+    });
+  }, 50);
   loadVersion();
   initPWAUpdate();
 });
@@ -1543,9 +1551,85 @@ async function exportExcel() {
   }
 }
 
-function renderSettings(area) {
-  area.innerHTML = `<div class="card"><div class="card-header"><h3 class="card-title">Settings</h3></div>
-    <p style="color:var(--text-muted);padding:20px;">Packages, Areas, SMS/WhatsApp Templates, Company Details — next update</p></div>`;
+async function renderSettings(area) {
+  area.innerHTML = `
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Company Details</h3></div>
+      <div class="form-row">
+        <div class="form-field"><label>Company Name</label><input id="setCompany" placeholder="FiberHub ISP" /></div>
+        <div class="form-field"><label>Phone</label><input id="setPhone" placeholder="03XXXXXXXXX" /></div>
+        <div class="form-field"><label>Address</label><input id="setAddress" placeholder="Office Address" /></div>
+        <div class="form-field"><label>Support WhatsApp</label><input id="setWhatsapp" placeholder="03XXXXXXXXX" /></div>
+      </div>
+      <button class="btn btn-primary" onclick="saveCompanySettings()">Save Company</button>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Auto Suspend (Unpaid Bills)</h3></div>
+      <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:12px;">Pending bills wale customers ko suspend karein</p>
+      <button class="btn btn-outline" style="border-color:var(--danger);color:var(--danger);" onclick="runAutoSuspend()">Run Auto Suspend Now</button>
+      <div id="suspendResult" style="margin-top:12px;"></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Packages</h3></div>
+      <p style="color:var(--text-muted);font-size:0.85rem;">Default packages: 10/20/30/50/100 Mbps — Customer form mein available hain</p>
+    </div>
+  `;
+  loadCompanySettings();
+}
+
+async function loadCompanySettings() {
+  try {
+    const doc = await db.collection("settings").doc("company").get();
+    if (doc.exists) {
+      const d = doc.data();
+      document.getElementById("setCompany").value = d.name || "";
+      document.getElementById("setPhone").value = d.phone || "";
+      document.getElementById("setAddress").value = d.address || "";
+      document.getElementById("setWhatsapp").value = d.whatsapp || "";
+    }
+  } catch (e) {}
+}
+
+async function saveCompanySettings() {
+  try {
+    await db.collection("settings").doc("company").set({
+      name: document.getElementById("setCompany").value.trim(),
+      phone: document.getElementById("setPhone").value.trim(),
+      address: document.getElementById("setAddress").value.trim(),
+      whatsapp: document.getElementById("setWhatsapp").value.trim(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    showToast("Company settings saved", "success");
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+}
+
+async function runAutoSuspend() {
+  if (!confirm("Pending bills wale saare customers suspend ho jayenge. Continue?")) return;
+  const el = document.getElementById("suspendResult");
+  el.innerHTML = "Processing...";
+  try {
+    const billSnap = await db.collection("bills").get();
+    const pendingCust = new Set();
+    billSnap.forEach(doc => {
+      const d = doc.data();
+      if (d.status === "pending" && d.customerId) pendingCust.add(d.customerId);
+    });
+    let count = 0;
+    for (const cid of pendingCust) {
+      await db.collection("customers").doc(cid).update({
+        status: "suspended",
+        suspendedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        suspendReason: "Unpaid bill"
+      });
+      count++;
+    }
+    el.innerHTML = `<span style="color:var(--success);">${count} customers suspended (unpaid bills)</span>`;
+    showToast(count + " customers suspended", "success");
+  } catch (e) {
+    el.innerHTML = `<span style="color:var(--danger);">Error: ${e.message}</span>`;
+  }
 }
 
 /* ========== TECHNICIAN PANEL ========== */
