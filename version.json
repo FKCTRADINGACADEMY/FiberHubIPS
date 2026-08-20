@@ -1,1 +1,1 @@
-{"version":"1.8.3","buildDate":"2026-08-20","notes":"Real dashboard stats (customers/bills/income), technician assign dropdown, full customer data on complaint (GPS+ID+all fields)"}
+{"version":"1.8.4","buildDate":"2026-08-20","notes":"PWA auto-update every 3s + version sync, Packages CRUD in Settings, packages load in customer form"}

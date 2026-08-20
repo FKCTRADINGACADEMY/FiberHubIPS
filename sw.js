@@ -1,9 +1,9 @@
 /**
  * FiberHub ISP - Service Worker
- * Network-first + instant update on new version
+ * Instant update: network-first + skipWaiting + claim
+ * CACHE_VERSION must match version.json when you deploy
  */
-
-const CACHE_VERSION = "fiberhub-v1.7.0";
+const CACHE_VERSION = "fiberhub-v1.8.4";
 const CACHE_NAME = `fiberhub-${CACHE_VERSION}`;
 
 const ASSETS = [
@@ -24,16 +24,13 @@ const ASSETS = [
   "./version.json"
 ];
 
-// Install - cache shell, take control immediately
 self.addEventListener("install", (event) => {
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(ASSETS))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS).catch(() => {}))
   );
 });
 
-// Activate - delete old caches, claim all clients
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -46,18 +43,15 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Network-first for HTML/JS/CSS (always fresh), cache fallback offline
+// Network-first so new deploy is seen immediately
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   if (!event.request.url.startsWith(self.location.origin)) return;
 
-  const url = event.request.url;
-
-  // Always network-first for app files so updates show immediately
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        if (response && response.status === 200) {
+        if (response && response.status === 200 && response.type === "basic") {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
