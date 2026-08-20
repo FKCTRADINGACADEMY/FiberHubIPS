@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
+  "version": "1.5.0",
   "buildDate": "2026-08-20",
-  "notes": "Customers, Billing, Network, Reports, Technician Panel - all real with Firestore"
+  "notes": "PWA icons fixed, full responsive mobile/PC, maskable icons"
 }
