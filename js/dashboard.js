@@ -1010,6 +1010,7 @@ async function printBill(id) {
       <div class="row total"><span>Amount:</span><span>₨ ${d.amount || 0}</span></div>
       <div class="row"><span>Status:</span><strong>${d.status}</strong></div>
       <br><button onclick="window.print()">Print / Save PDF</button>
+      <p style="margin-top:30px;font-size:11px;color:#999;text-align:center;">Software By Fazul Khan Chandio • 03333909816</p>
       </body></html>
     `);
     w.document.close();
