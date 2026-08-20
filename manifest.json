@@ -2,10 +2,13 @@
   "name": "FiberHub ISP",
   "short_name": "FiberHub",
   "description": "Manage Your Network with Confidence - By Fazul Khan Chandio",
-  "start_url": "./index.html",
+  "id": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#0a1628",
-  "theme_color": "#0a1628",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#f1f5f9",
+  "theme_color": "#0ea5e9",
   "orientation": "any",
   "icons": [
     {
@@ -35,5 +38,6 @@
   ],
   "categories": ["business", "productivity"],
   "lang": "en",
-  "dir": "ltr"
+  "dir": "ltr",
+  "prefer_related_applications": false
 }
