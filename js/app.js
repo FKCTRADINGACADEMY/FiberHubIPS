@@ -104,18 +104,30 @@ async function loadVersion() {
 }
 
 function registerServiceWorker() {
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("sw.js")
-      .then((reg) => {
-        reg.addEventListener("updatefound", () => {
-          const newWorker = reg.installing;
-          newWorker.addEventListener("statechange", () => {
-            if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-              showToast("New version available! Refresh to update.", "info");
-            }
-          });
-        });
-      })
-      .catch(() => {});
-  }
+  if (!("serviceWorker" in navigator)) return;
+
+  navigator.serviceWorker.register("sw.js").then((reg) => {
+    // Check for updates every 60 seconds
+    setInterval(() => reg.update(), 60000);
+
+    reg.addEventListener("updatefound", () => {
+      const newWorker = reg.installing;
+      if (!newWorker) return;
+      newWorker.addEventListener("statechange", () => {
+        if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+          // Auto activate new version
+          newWorker.postMessage({ type: "SKIP_WAITING" });
+          showToast("Updating app...", "info");
+        }
+      });
+    });
+  }).catch(() => {});
+
+  // When new SW takes control → reload automatically
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
 }

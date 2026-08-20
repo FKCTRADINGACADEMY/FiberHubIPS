@@ -14,7 +14,31 @@ document.addEventListener("DOMContentLoaded", () => {
   setupEvents();
   loadModule("dashboard");
   loadVersion();
+  initPWAUpdate();
 });
+
+function initPWAUpdate() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("sw.js").then((reg) => {
+    setInterval(() => reg.update(), 60000);
+    reg.addEventListener("updatefound", () => {
+      const nw = reg.installing;
+      if (!nw) return;
+      nw.addEventListener("statechange", () => {
+        if (nw.state === "installed" && navigator.serviceWorker.controller) {
+          nw.postMessage({ type: "SKIP_WAITING" });
+          showToast("Updating app...", "info");
+        }
+      });
+    });
+  }).catch(() => {});
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
+}
 
 /* ========== Setup ========== */
 function setupUserInfo() {
@@ -306,7 +330,8 @@ async function loadComplaintsList() {
         <td>${date}</td>
         <td>
           <button class="btn btn-sm btn-outline" onclick="viewComplaint('${d.id}')">View</button>
-          ${d.status !== "resolved" ? `<button class="btn btn-sm btn-primary" onclick="updateComplaintStatus('${d.id}')">Update</button>` : ""}
+          <button class="btn btn-sm btn-primary" onclick="updateComplaintStatus('${d.id}')">Edit</button>
+          <button class="btn btn-sm btn-outline" onclick="deleteComplaint('${d.id}')" style="color:var(--danger);">Del</button>
         </td>
       </tr>`;
     });
@@ -315,6 +340,17 @@ async function loadComplaintsList() {
   } catch (e) {
     console.error(e);
     el.innerHTML = `<p style="color:var(--danger);padding:20px;">Error: ${e.message}<br>Make sure Firestore Database is created in Firebase Console.</p>`;
+  }
+}
+
+async function deleteComplaint(id) {
+  if (!confirm("Delete this complaint permanently?")) return;
+  try {
+    await db.collection("complaints").doc(id).delete();
+    showToast("Complaint deleted", "success");
+    loadComplaintsList();
+  } catch (e) {
+    showToast("Delete failed: " + e.message, "error");
   }
 }
 
@@ -583,7 +619,8 @@ async function renderCustomers(area) {
         <div class="form-field"><label>Full Name *</label><input id="cName" placeholder="Customer Name" /></div>
         <div class="form-field"><label>CNIC</label><input id="cCnic" placeholder="XXXXX-XXXXXXX-X" /></div>
         <div class="form-field"><label>Phone *</label><input id="cPhone" placeholder="03XXXXXXXXX" /></div>
-        <div class="form-field"><label>Email</label><input id="cEmail" placeholder="email@example.com" /></div>
+        <div class="form-field"><label>Email * (Login ID)</label><input id="cEmail" placeholder="customer@email.com" /></div>
+        <div class="form-field" id="cPasswordField"><label>Login Password *</label><input id="cPassword" type="text" placeholder="Min 6 characters" /></div>
         <div class="form-field"><label>Package</label>
           <select id="cPackage">
             <option value="10 Mbps">10 Mbps</option>
@@ -606,7 +643,8 @@ async function renderCustomers(area) {
         </div>
       </div>
       <div class="form-field" style="margin-bottom:16px;"><label>Address</label><textarea id="cAddress" rows="2" placeholder="Full Address"></textarea></div>
-      <button class="btn btn-primary" id="saveCustomerBtn" onclick="saveCustomer()">Save Customer</button>
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:12px;" id="cLoginHint">Email + Password se customer app mein login kar sake ga</p>
+      <button class="btn btn-primary" id="saveCustomerBtn" onclick="saveCustomer()">Save Customer + Create Login</button>
     </div>
 
     <div class="card">
@@ -627,13 +665,23 @@ function showCustomerForm(id) {
   document.getElementById("customerFormCard").style.display = "block";
   document.getElementById("customerFormTitle").textContent = id ? "Edit Customer" : "New Customer";
   document.getElementById("editCustomerId").value = id || "";
+  const passField = document.getElementById("cPasswordField");
+  const hint = document.getElementById("cLoginHint");
+  const saveBtn = document.getElementById("saveCustomerBtn");
   if (!id) {
-    ["cName","cCnic","cPhone","cEmail","cOnu","cPort","cArea","cGps","cAddress"].forEach(i => {
+    ["cName","cCnic","cPhone","cEmail","cPassword","cOnu","cPort","cArea","cGps","cAddress"].forEach(i => {
       const el = document.getElementById(i); if (el) el.value = "";
     });
     document.getElementById("cPackage").value = "20 Mbps";
     document.getElementById("cRent").value = "2500";
     document.getElementById("cStatus").value = "active";
+    if (passField) passField.style.display = "block";
+    if (hint) hint.style.display = "block";
+    if (saveBtn) saveBtn.textContent = "Save Customer + Create Login";
+  } else {
+    if (passField) passField.style.display = "none";
+    if (hint) hint.style.display = "none";
+    if (saveBtn) saveBtn.textContent = "Update Customer";
   }
 }
 
@@ -647,7 +695,7 @@ async function saveCustomer() {
     name: document.getElementById("cName").value.trim(),
     cnic: document.getElementById("cCnic").value.trim(),
     phone: document.getElementById("cPhone").value.trim(),
-    email: document.getElementById("cEmail").value.trim(),
+    email: document.getElementById("cEmail").value.trim().toLowerCase(),
     package: document.getElementById("cPackage").value,
     rent: Number(document.getElementById("cRent").value) || 0,
     onuSerial: document.getElementById("cOnu").value.trim(),
@@ -658,6 +706,7 @@ async function saveCustomer() {
     status: document.getElementById("cStatus").value,
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   };
+  const password = (document.getElementById("cPassword")?.value || "").trim();
 
   if (!data.name || !data.phone) {
     showToast("Name and Phone required", "error");
@@ -673,10 +722,36 @@ async function saveCustomer() {
       await db.collection("customers").doc(id).update(data);
       showToast("Customer updated", "success");
     } else {
+      // New customer - create login if email + password given
+      if (!data.email || !password) {
+        showToast("Email and Password required for customer login", "error");
+        btn.disabled = false;
+        btn.textContent = "Save Customer + Create Login";
+        return;
+      }
+      if (password.length < 6) {
+        showToast("Password min 6 characters", "error");
+        btn.disabled = false;
+        btn.textContent = "Save Customer + Create Login";
+        return;
+      }
+
+      // Create Auth account via secondary app
+      const result = await adminCreateUser(data.name, data.email, data.phone, password, "customer");
+      if (!result.success) {
+        showToast(result.error || "Login create failed", "error");
+        btn.disabled = false;
+        btn.textContent = "Save Customer + Create Login";
+        return;
+      }
+
+      data.uid = result.uid;
       data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
       data.createdBy = user.uid;
       await db.collection("customers").add(data);
-      showToast("Customer added", "success");
+
+      showToast("Customer + Login created! Email: " + data.email + " | Password: " + password, "success");
+      alert("Customer Login Details:\n\nEmail: " + data.email + "\nPassword: " + password + "\n\nYe customer ko de dein.");
     }
     hideCustomerForm();
     loadCustomersList();
@@ -684,7 +759,20 @@ async function saveCustomer() {
     showToast("Error: " + e.message, "error");
   }
   btn.disabled = false;
-  btn.textContent = "Save Customer";
+  btn.textContent = id ? "Update Customer" : "Save Customer + Create Login";
+}
+
+async function resetCustomerPassword(email) {
+  if (!email) {
+    email = prompt("Customer email for password reset:");
+  }
+  if (!email) return;
+  try {
+    await auth.sendPasswordResetEmail(email.trim().toLowerCase());
+    showToast("Password reset email sent to " + email, "success");
+  } catch (e) {
+    showToast("Reset failed: " + (e.message || "check email"), "error");
+  }
 }
 
 async function loadCustomersList() {
@@ -723,6 +811,7 @@ async function loadCustomersList() {
         <td><span class="status ${d.status === "active" ? "active" : "suspended"}">${d.status || "active"}</span></td>
         <td>
           <button class="btn btn-sm btn-outline" onclick="editCustomer('${d.id}')">Edit</button>
+          ${d.email ? `<button class="btn btn-sm btn-outline" onclick="resetCustomerPassword('${d.email}')">Reset Pass</button>` : ""}
           <button class="btn btn-sm btn-outline" onclick="deleteCustomer('${d.id}')">Del</button>
         </td>
       </tr>`;
@@ -1132,37 +1221,43 @@ async function loadUsersList() {
     }
 
     let html = `<div class="table-wrapper"><table>
-      <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Created</th></tr></thead><tbody>`;
+      <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Created</th><th>Actions</th></tr></thead><tbody>`;
 
     snap.forEach(doc => {
       const d = doc.data();
       const date = d.createdAt ? d.createdAt.toDate().toLocaleDateString() : "-";
-      const roleColor = d.role === "admin" ? "purple" : d.role === "technician" ? "orange" : d.role === "billing" ? "green" : "blue";
       html += `<tr>
         <td>${d.name || "-"}</td>
         <td>${d.email || "-"}</td>
         <td>${d.phone || "-"}</td>
         <td><span class="status ${d.role === "admin" ? "resolved" : d.role === "customer" ? "active" : "pending"}">${d.role || "customer"}</span></td>
         <td>${date}</td>
+        <td>
+          <button class="btn btn-sm btn-outline" onclick="editUserRole('${doc.id}','${d.role || "customer"}')">Edit Role</button>
+          <button class="btn btn-sm btn-outline" onclick="deleteUserDoc('${doc.id}')" style="color:var(--danger);">Del</button>
+        </td>
       </tr>`;
     });
     html += `</tbody></table></div>`;
     el.innerHTML = html;
   } catch (e) {
-    // Fallback without orderBy
     try {
       const snap = await db.collection("users").get();
       let docs = [];
       snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
       
       let html = `<div class="table-wrapper"><table>
-        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th></tr></thead><tbody>`;
+        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Actions</th></tr></thead><tbody>`;
       docs.forEach(d => {
         html += `<tr>
           <td>${d.name || "-"}</td>
           <td>${d.email || "-"}</td>
           <td>${d.phone || "-"}</td>
           <td><span class="status active">${d.role || "customer"}</span></td>
+          <td>
+            <button class="btn btn-sm btn-outline" onclick="editUserRole('${d.id}','${d.role || "customer"}')">Edit Role</button>
+            <button class="btn btn-sm btn-outline" onclick="deleteUserDoc('${d.id}')" style="color:var(--danger);">Del</button>
+          </td>
         </tr>`;
       });
       html += `</tbody></table></div>`;
@@ -1170,6 +1265,43 @@ async function loadUsersList() {
     } catch (e2) {
       el.innerHTML = `<p style="color:var(--danger);padding:16px;">Error loading users</p>`;
     }
+  }
+}
+
+async function editUserRole(uid, currentRole) {
+  const role = prompt("Change role to:\n1 = customer\n2 = billing\n3 = technician\n4 = admin\n\nType 1-4:", 
+    currentRole === "admin" ? "4" : currentRole === "technician" ? "3" : currentRole === "billing" ? "2" : "1");
+  const map = { "1": "customer", "2": "billing", "3": "technician", "4": "admin" };
+  const newRole = map[role];
+  if (!newRole) return;
+
+  const name = prompt("Update name (or leave blank):");
+  const phone = prompt("Update phone (or leave blank):");
+
+  try {
+    const update = { role: newRole, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+    if (name && name.trim()) update.name = name.trim();
+    if (phone && phone.trim()) update.phone = phone.trim();
+    await db.collection("users").doc(uid).update(update);
+    showToast("User updated", "success");
+    loadUsersList();
+  } catch (e) {
+    showToast("Update failed: " + e.message, "error");
+  }
+}
+
+async function deleteUserDoc(uid) {
+  if (uid === user.uid) {
+    showToast("You cannot delete yourself", "error");
+    return;
+  }
+  if (!confirm("Delete this user from system?\n(Auth account may still exist in Firebase Console)")) return;
+  try {
+    await db.collection("users").doc(uid).delete();
+    showToast("User removed", "success");
+    loadUsersList();
+  } catch (e) {
+    showToast("Delete failed: " + e.message, "error");
   }
 }
 
@@ -1500,13 +1632,99 @@ async function techUpdateJob(id) {
   }
 }
 
-function renderMyBills(area) {
+async function renderMyBills(area) {
   area.innerHTML = `
     <div class="card">
       <div class="card-header"><h3 class="card-title">My Bills & Package Renewal</h3></div>
-      <p style="color:var(--text-muted);padding:20px;">Billing module coming soon. You can already submit complaints.</p>
+      <div id="myBillsList">Loading...</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Technician Contacts</h3></div>
+      <div id="techContactsList">Loading...</div>
     </div>
   `;
+  loadMyBills();
+  loadTechContacts();
+}
+
+async function loadMyBills() {
+  const el = document.getElementById("myBillsList");
+  if (!el) return;
+  try {
+    const snap = await db.collection("bills").get();
+    let docs = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (d.customerPhone === user.phone || d.customerName === user.name || (user.email && d.customerId)) {
+        // match by phone or we'll also try customer records
+        docs.push({ id: doc.id, ...d });
+      }
+    });
+    // Also match via customers collection email
+    const custSnap = await db.collection("customers").where("email", "==", user.email).get();
+    const myCustIds = [];
+    custSnap.forEach(doc => myCustIds.push(doc.id));
+    
+    docs = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (myCustIds.includes(d.customerId) || d.customerPhone === user.phone) {
+        docs.push({ id: doc.id, ...d });
+      }
+    });
+    docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+    if (docs.length === 0) {
+      el.innerHTML = `<p style="color:var(--text-muted);padding:16px;">No bills found. Contact office for package renewal.</p>`;
+      return;
+    }
+
+    let html = `<div class="table-wrapper"><table>
+      <thead><tr><th>Month</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead><tbody>`;
+    docs.forEach(d => {
+      html += `<tr>
+        <td>${d.month || "-"}</td>
+        <td>₨ ${d.amount || 0}</td>
+        <td><span class="status ${d.status === "paid" ? "active" : "pending"}">${d.status}</span></td>
+        <td>${d.status === "pending" ? `<button class="btn btn-sm btn-primary" onclick="showToast('Pay via EasyPaisa/JazzCash and contact office with receipt','info')">Renew / Pay</button>` : `<button class="btn btn-sm btn-outline" onclick="printBill('${d.id}')">Receipt</button>`}</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<p style="color:var(--danger);padding:16px;">Error loading bills</p>`;
+  }
+}
+
+async function loadTechContacts() {
+  const el = document.getElementById("techContactsList");
+  if (!el) return;
+  try {
+    const snap = await db.collection("users").get();
+    let techs = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (d.role === "technician") techs.push(d);
+    });
+    if (techs.length === 0) {
+      el.innerHTML = `<p style="color:var(--text-muted);padding:12px;">No technicians listed yet</p>`;
+      return;
+    }
+    let html = `<div class="table-wrapper"><table>
+      <thead><tr><th>Name</th><th>Phone</th><th>Call</th></tr></thead><tbody>`;
+    techs.forEach(t => {
+      const phone = t.phone || "";
+      html += `<tr>
+        <td>${t.name || "Technician"}</td>
+        <td>${phone || "-"}</td>
+        <td>${phone ? `<a class="btn btn-sm btn-primary" href="tel:${phone}">Call</a>` : "-"}</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<p style="color:var(--danger);">Error loading contacts</p>`;
+  }
 }
 
 function renderMyProfile(area) {
@@ -1516,11 +1734,44 @@ function renderMyProfile(area) {
       <h3 class="card-title" style="margin-bottom:16px;">My Profile</h3>
       <div class="form-row">
         <div class="form-field"><label>Name</label><input value="${u.name}" readonly /></div>
-        <div class="form-field"><label>Email</label><input value="${u.email}" readonly /></div>
+        <div class="form-field"><label>Email (Login)</label><input value="${u.email}" readonly /></div>
+        <div class="form-field"><label>Phone</label><input value="${u.phone || "-"}" readonly /></div>
         <div class="form-field"><label>Role</label><input value="${roleLabel(u.role)}" readonly /></div>
       </div>
+      <button class="btn btn-outline" style="margin-top:12px;" onclick="resetCustomerPassword('${u.email}')">Reset My Password (Email)</button>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Technician Helpline</h3></div>
+      <div id="techContactsList2">Loading...</div>
     </div>
   `;
+  // reuse load into second container
+  setTimeout(async () => {
+    const el = document.getElementById("techContactsList2");
+    if (!el) return;
+    try {
+      const snap = await db.collection("users").get();
+      let techs = [];
+      snap.forEach(doc => {
+        const d = doc.data();
+        if (d.role === "technician") techs.push(d);
+      });
+      if (techs.length === 0) {
+        el.innerHTML = `<p style="color:var(--text-muted);">No technicians yet</p>`;
+        return;
+      }
+      let html = "";
+      techs.forEach(t => {
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">
+          <div><strong>${t.name || "Tech"}</strong><br><span style="color:var(--text-muted);font-size:0.85rem;">${t.phone || "No phone"}</span></div>
+          ${t.phone ? `<a class="btn btn-sm btn-primary" href="tel:${t.phone}">Call</a>` : ""}
+        </div>`;
+      });
+      el.innerHTML = html;
+    } catch (e) {
+      el.innerHTML = "Error";
+    }
+  }, 100);
 }
 
 /* ========== Helpers ========== */
