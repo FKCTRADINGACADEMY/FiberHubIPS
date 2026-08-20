@@ -209,11 +209,13 @@ async function renderDashboard(area) {
   area.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);">Loading dashboard...</div>`;
 
   let totalCustomers = 0, activeCustomers = 0, suspendedCustomers = 0;
-  let totalComplaints = 0, openComplaints = 0, pendingComplaints = 0;
+  let openComplaints = 0, pendingComplaints = 0;
   let pendingBillsCount = 0, pendingBillsAmount = 0, monthlyIncome = 0;
+  const monthTotals = {}; // YYYY-MM -> paid amount
 
   const now = new Date();
   const currentMonth = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+  const dateStr = now.toLocaleDateString("en-PK", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   try {
     const custSnap = await db.collection("customers").get();
@@ -227,7 +229,6 @@ async function renderDashboard(area) {
 
   try {
     const snap = await db.collection("complaints").get();
-    totalComplaints = snap.size;
     snap.forEach(doc => {
       const s = doc.data().status;
       if (s === "pending" || s === "in_progress") openComplaints++;
@@ -240,43 +241,105 @@ async function renderDashboard(area) {
     billSnap.forEach(doc => {
       const b = doc.data();
       const amt = Number(b.amount) || 0;
+      const late = Number(b.lateFee) || 0;
       if (b.status === "pending") {
         pendingBillsCount++;
-        pendingBillsAmount += amt;
+        pendingBillsAmount += amt + late;
       }
-      // Paid this month
-      if (b.status === "paid" && b.month === currentMonth) {
-        monthlyIncome += amt;
+      if (b.status === "paid" && b.month) {
+        monthTotals[b.month] = (monthTotals[b.month] || 0) + amt + late;
+        if (b.month === currentMonth) monthlyIncome += amt + late;
       }
     });
   } catch (e) { console.warn("Dashboard bills:", e); }
 
-  const stats = [
-    { label: "Total Customers", value: totalCustomers, icon: "purple", svg: iconUsers() },
-    { label: "Active Connections", value: activeCustomers, icon: "green", svg: iconCheck() },
-    { label: "Suspended", value: suspendedCustomers, icon: "red", svg: iconSuspend() },
-    { label: "Monthly Income", value: "₨ " + monthlyIncome.toLocaleString(), icon: "green", svg: iconBill() },
-    { label: "Pending Bills", value: pendingBillsCount + " (₨ " + pendingBillsAmount.toLocaleString() + ")", icon: "orange", svg: iconBilling() },
-    { label: "Open Complaints", value: openComplaints, icon: "orange", svg: iconComplaint() },
-    { label: "Pending Complaints", value: pendingComplaints, icon: "red", svg: iconComplaint() },
-    { label: "System Status", value: "Online", icon: "green", svg: iconCheck() }
-  ];
+  // Last 6 months for mini chart
+  const chartMonths = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+    chartMonths.push({ key, label: d.toLocaleString("en", { month: "short" }), value: monthTotals[key] || 0 });
+  }
+  const maxChart = Math.max(...chartMonths.map(m => m.value), 1);
 
-  let html = `<div class="stats-grid">`;
-  stats.forEach(s => {
-    html += `
-      <div class="stat-card">
-        <div class="stat-icon ${s.icon}">${s.svg}</div>
-        <div class="stat-info">
-          <h3>${s.value}</h3>
-          <p>${s.label}</p>
+  const u = getCurrentUser() || user || {};
+  const greet = now.getHours() < 12 ? "Good Morning" : now.getHours() < 17 ? "Good Afternoon" : "Good Evening";
+
+  let html = `
+    <div class="dash-hero">
+      <div class="dash-hero-text">
+        <h2>${greet}, ${u.name || "Admin"} 👋</h2>
+        <p>${dateStr} · FiberHub ISP Control Center</p>
+      </div>
+      <div class="dash-hero-actions">
+        <button class="btn btn-primary btn-sm" onclick="loadModule('customers')">+ Customer</button>
+        <button class="btn btn-outline btn-sm" onclick="loadModule('complaints')">Complaints</button>
+        <button class="btn btn-outline btn-sm" onclick="loadModule('billing')">Billing</button>
+      </div>
+    </div>
+
+    <div class="stats-grid dash-stats">
+      <div class="stat-card stat-modern accent-blue">
+        <div class="stat-icon blue">${iconUsers()}</div>
+        <div class="stat-info"><h3>${totalCustomers}</h3><p>Total Customers</p></div>
+      </div>
+      <div class="stat-card stat-modern accent-green">
+        <div class="stat-icon green">${iconCheck()}</div>
+        <div class="stat-info"><h3>${activeCustomers}</h3><p>Active Connections</p></div>
+      </div>
+      <div class="stat-card stat-modern accent-red">
+        <div class="stat-icon red">${iconSuspend()}</div>
+        <div class="stat-info"><h3>${suspendedCustomers}</h3><p>Suspended</p></div>
+      </div>
+      <div class="stat-card stat-modern accent-teal">
+        <div class="stat-icon green">${iconBill()}</div>
+        <div class="stat-info"><h3>₨ ${monthlyIncome.toLocaleString()}</h3><p>Monthly Income</p></div>
+      </div>
+      <div class="stat-card stat-modern accent-orange">
+        <div class="stat-icon orange">${iconBilling()}</div>
+        <div class="stat-info"><h3>${pendingBillsCount}</h3><p>Pending Bills · ₨ ${pendingBillsAmount.toLocaleString()}</p></div>
+      </div>
+      <div class="stat-card stat-modern accent-purple">
+        <div class="stat-icon purple">${iconComplaint()}</div>
+        <div class="stat-info"><h3>${openComplaints}</h3><p>Open Complaints (${pendingComplaints} pending)</p></div>
+      </div>
+    </div>
+
+    <div class="dash-grid-2">
+      <div class="card dash-card">
+        <div class="card-header">
+          <h3 class="card-title">📈 Revenue (6 months)</h3>
         </div>
-      </div>`;
-  });
-  html += `</div>`;
+        <div class="revenue-chart">
+          ${chartMonths.map(m => `
+            <div class="rev-bar-col" title="${m.key}: ₨ ${m.value.toLocaleString()}">
+              <div class="rev-bar-wrap">
+                <div class="rev-bar" style="height:${Math.max(4, (m.value / maxChart) * 100)}%"></div>
+              </div>
+              <span class="rev-label">${m.label}</span>
+              <span class="rev-val">${m.value ? "₨" + (m.value >= 1000 ? Math.round(m.value / 1000) + "k" : m.value) : "0"}</span>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+      <div class="card dash-card">
+        <div class="card-header">
+          <h3 class="card-title">⚡ Quick Actions</h3>
+        </div>
+        <div class="quick-actions">
+          <button class="qa-btn" onclick="loadModule('customers')"><span>👥</span> Customers</button>
+          <button class="qa-btn" onclick="loadModule('billing')"><span>💵</span> Billing</button>
+          <button class="qa-btn" onclick="loadModule('complaints')"><span>🛠</span> Complaints</button>
+          <button class="qa-btn" onclick="loadModule('reports')"><span>📊</span> Reports</button>
+          <button class="qa-btn" onclick="loadModule('network')"><span>🌐</span> Network</button>
+          <button class="qa-btn" onclick="loadModule('settings')"><span>⚙️</span> Settings</button>
+          <button class="qa-btn qa-warn" onclick="sendDueReminders()"><span>📱</span> Due Reminders</button>
+          <button class="qa-btn" onclick="loadModule('users')"><span>🔐</span> Users</button>
+        </div>
+      </div>
+    </div>
 
-  html += `
-    <div class="card">
+    <div class="card dash-card">
       <div class="card-header">
         <h3 class="card-title">Recent Complaints</h3>
         <button class="btn btn-primary btn-sm" onclick="loadModule('complaints')">View All</button>
@@ -286,6 +349,57 @@ async function renderDashboard(area) {
   `;
   area.innerHTML = html;
   loadRecentComplaints();
+}
+
+/** Bulk WhatsApp due reminders for pending bills (opens first few) */
+async function sendDueReminders() {
+  try {
+    const snap = await db.collection("bills").get();
+    const pending = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (d.status === "pending" && d.customerPhone) pending.push({ id: doc.id, ...d });
+    });
+    if (pending.length === 0) {
+      showToast("No pending bills with phone numbers", "info");
+      return;
+    }
+    let tpl = "Assalam o Alaikum {name}, aapka bill {month} – ₨{amount} pending hai. FiberHub ISP.";
+    try {
+      const t = await db.collection("settings").doc("templates").get();
+      if (t.exists && t.data().billReminder) tpl = t.data().billReminder;
+    } catch (e) {}
+
+    const list = pending.slice(0, 15).map(b => {
+      const total = (Number(b.amount) || 0) + (Number(b.lateFee) || 0);
+      const msg = applyTemplate(tpl, {
+        name: b.customerName || "Customer",
+        month: b.month || "",
+        amount: total,
+        phone: b.customerPhone || "",
+        package: "", issue: "", status: "pending", email: "", password: ""
+      });
+      return { phone: b.customerPhone, name: b.customerName, msg, total, month: b.month };
+    });
+
+    showModal("Due Bill Reminders (" + pending.length + " pending)", `
+      <p style="margin-bottom:12px;color:var(--text-muted);font-size:0.9rem;">Har customer ke liye WhatsApp khulega. Pehle 15 list mein hain.</p>
+      <div style="max-height:320px;overflow-y:auto;">
+        ${list.map((x, i) => `
+          <div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <div style="font-size:0.9rem;">
+              <strong>${x.name || "-"}</strong><br>
+              <small>${x.month || ""} · ₨ ${x.total} · ${x.phone}</small>
+            </div>
+            <button class="btn btn-sm btn-outline" style="color:#25D366;flex-shrink:0;" onclick="openWhatsApp('${x.phone}', ${JSON.stringify(x.msg)})">WA</button>
+          </div>
+        `).join("")}
+      </div>
+    `, `<button class="btn btn-outline" onclick="this.closest('.modal-overlay').classList.remove('active')">Close</button>`);
+    logActivity("billing", "Opened due reminders list (" + pending.length + ")");
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
 }
 
 async function loadRecentComplaints() {
