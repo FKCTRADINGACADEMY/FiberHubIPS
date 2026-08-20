@@ -328,17 +328,19 @@ async function loadComplaintsList() {
 
     docs.forEach(d => {
       const date = d.createdAt ? d.createdAt.toDate().toLocaleString() : "-";
+      const phone = d.customerPhone || "";
       html += `<tr>
         <td title="${d.id}">${d.id.slice(0, 8)}</td>
         <td>${d.customerName || "-"}<br><small style="color:var(--text-muted)">${d.customerEmail || ""}</small></td>
-        <td>${d.customerPhone || "-"}</td>
+        <td>${phone || "-"}</td>
         <td>${d.issue || "-"}</td>
         <td><span class="status ${statusClass(d.status)}">${statusLabel(d.status)}</span></td>
         <td>${d.technicianName || "Not Assigned"}</td>
         <td>${date}</td>
-        <td>
+        <td style="white-space:nowrap;">
           <button class="btn btn-sm btn-outline" onclick="viewComplaint('${d.id}')">View</button>
-          <button class="btn btn-sm btn-primary" onclick="updateComplaintStatus('${d.id}')">Edit</button>
+          <button class="btn btn-sm btn-primary" onclick="updateComplaintStatus('${d.id}')">Status</button>
+          ${phone ? `<button class="btn btn-sm btn-outline" onclick="openWhatsApp('${phone}', 'Assalam o Alaikum ${d.customerName || ""}, aapki complaint (${d.issue || ""}) ke bare mein FiberHub ISP se rabta kar rahe hain.')" title="WhatsApp" style="color:#25D366;">WA</button>` : ""}
           <button class="btn btn-sm btn-outline" onclick="deleteComplaint('${d.id}')" style="color:var(--danger);">Del</button>
         </td>
       </tr>`;
@@ -372,6 +374,54 @@ async function viewComplaint(id) {
     const d = doc.data();
     const date = d.createdAt ? d.createdAt.toDate().toLocaleString() : "-";
 
+    // Try to load full customer data
+    let extraCustomer = "";
+    if (d.customerUid || d.customerEmail) {
+      try {
+        let custSnap = null;
+        if (d.customerUid) {
+          const q = await db.collection("customers").where("uid", "==", d.customerUid).limit(1).get();
+          if (!q.empty) custSnap = q.docs[0];
+        }
+        if (!custSnap && d.customerEmail) {
+          const q = await db.collection("customers").where("email", "==", d.customerEmail).limit(1).get();
+          if (!q.empty) custSnap = q.docs[0];
+        }
+        if (custSnap) {
+          const c = custSnap.data();
+          extraCustomer = `
+            <div style="background:var(--bg-main);padding:12px;border-radius:8px;margin:8px 0;">
+              <strong>Full Customer Info</strong>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;font-size:0.9em;">
+                <div>Package: <b>${c.package || d.customerPackage || "-"}</b></div>
+                <div>Rent: <b>₨ ${c.rent || d.customerRent || 0}</b></div>
+                <div>ONU: <b>${c.onuSerial || d.customerOnu || "-"}</b></div>
+                <div>Port: <b>${c.fiberPort || d.customerPort || "-"}</b></div>
+                <div>Area: <b>${c.area || d.customerArea || "-"}</b></div>
+                <div>Status: <b>${c.status || d.customerStatus || "-"}</b></div>
+                <div style="grid-column:1/-1;">Address: <b>${c.address || d.customerAddress || "-"}</b></div>
+                <div style="grid-column:1/-1;">CNIC: <b>${c.cnic || d.customerCnic || "-"}</b></div>
+              </div>
+            </div>`;
+        } else if (d.customerPackage || d.customerOnu || d.customerArea) {
+          extraCustomer = `
+            <div style="background:var(--bg-main);padding:12px;border-radius:8px;margin:8px 0;">
+              <strong>Customer Info (from complaint)</strong>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;font-size:0.9em;">
+                <div>Package: <b>${d.customerPackage || "-"}</b></div>
+                <div>Rent: <b>₨ ${d.customerRent || 0}</b></div>
+                <div>ONU: <b>${d.customerOnu || "-"}</b></div>
+                <div>Port: <b>${d.customerPort || "-"}</b></div>
+                <div>Area: <b>${d.customerArea || "-"}</b></div>
+                <div>Status: <b>${d.customerStatus || "-"}</b></div>
+                <div style="grid-column:1/-1;">Address: <b>${d.customerAddress || "-"}</b></div>
+                <div style="grid-column:1/-1;">CNIC: <b>${d.customerCnic || "-"}</b></div>
+              </div>
+            </div>`;
+        }
+      } catch (e) {}
+    }
+
     const notes = (d.notes || []).map(n => 
       `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
         <strong>${n.by || "System"}</strong> <small style="color:var(--text-muted)">${n.at ? new Date(n.at).toLocaleString() : ""}</small>
@@ -379,69 +429,128 @@ async function viewComplaint(id) {
       </div>`
     ).join("") || "<p style='color:var(--text-muted)'>No notes yet</p>";
 
+    const phone = d.customerPhone || "";
+    const waMsg = `Assalam o Alaikum ${d.customerName || ""}, aapki complaint (${d.issue || ""}) – Status: ${statusLabel(d.status)}. FiberHub ISP.`;
+
     showModal("Complaint Details", `
-      <div style="display:grid;gap:12px;">
-        <div><strong>ID:</strong> ${id}</div>
+      <div style="display:grid;gap:10px;">
+        <div><strong>ID:</strong> ${id.slice(0, 12)}...</div>
         <div><strong>Customer:</strong> ${d.customerName || "-"} (${d.customerEmail || "-"})</div>
-        <div><strong>Phone:</strong> ${d.customerPhone || "-"}</div>
+        <div><strong>Phone:</strong> ${phone || "-"}
+          ${phone ? `<button class="btn btn-sm btn-outline" style="margin-left:8px;color:#25D366;" onclick="openWhatsApp('${phone}', '${waMsg.replace(/'/g, "\\'")}')">WhatsApp</button>` : ""}
+        </div>
+        ${extraCustomer}
         <div><strong>Issue:</strong> ${d.issue}</div>
         <div><strong>Description:</strong><br>${d.description || "-"}</div>
         <div><strong>Status:</strong> <span class="status ${statusClass(d.status)}">${statusLabel(d.status)}</span></div>
         <div><strong>Technician:</strong> ${d.technicianName || "Not Assigned"}</div>
         <div><strong>Created:</strong> ${date}</div>
-        <div><strong>Notes:</strong>${notes}</div>
+        <div><strong>Notes / Updates:</strong>${notes}</div>
       </div>
+    `, `
+      <button class="btn btn-primary" onclick="document.querySelector('.modal-overlay').classList.remove('active'); updateComplaintStatus('${id}')">Update Status</button>
+      ${phone ? `<button class="btn btn-outline" style="color:#25D366;" onclick="openWhatsApp('${phone}', '${waMsg.replace(/'/g, "\\'")}')">WhatsApp</button>` : ""}
+      <button class="btn btn-outline" onclick="this.closest('.modal-overlay').classList.remove('active')">Close</button>
     `);
   } catch (e) {
+    console.error(e);
     showToast("Error loading complaint", "error");
   }
 }
 
 async function updateComplaintStatus(id) {
-  const newStatus = prompt("Enter new status:\n1 = Pending\n2 = In Progress\n3 = Resolved\n\nType 1, 2 or 3:");
-  if (!newStatus) return;
+  // Better modal instead of prompts
+  const body = `
+    <div style="display:grid;gap:14px;">
+      <div class="form-field">
+        <label>New Status *</label>
+        <select id="updStatus" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);">
+          <option value="pending">Pending</option>
+          <option value="in_progress">In Progress</option>
+          <option value="resolved">Resolved</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label>Technician Name (optional)</label>
+        <input type="text" id="updTech" placeholder="Technician name" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);" value="${user.name || ""}" />
+      </div>
+      <div class="form-field">
+        <label>Note / Response for Customer *</label>
+        <textarea id="updNote" rows="3" placeholder="Customer ko kya message jaye..." style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);"></textarea>
+      </div>
+      <div style="font-size:0.85em;color:var(--text-muted);">
+        Status change ke baad customer ko in-app notification chali jayegi.
+      </div>
+    </div>
+  `;
+  showModal("Update Complaint Status", body, `
+    <button class="btn btn-primary" id="btnSaveStatus">Save & Notify Customer</button>
+    <button class="btn btn-outline" onclick="this.closest('.modal-overlay').classList.remove('active')">Cancel</button>
+  `);
 
-  const map = { "1": "pending", "2": "in_progress", "3": "resolved" };
-  const status = map[newStatus.trim()];
-  if (!status) {
-    showToast("Invalid status", "error");
-    return;
-  }
+  document.getElementById("btnSaveStatus").onclick = async () => {
+    const status = document.getElementById("updStatus").value;
+    const techName = document.getElementById("updTech").value.trim();
+    const note = document.getElementById("updNote").value.trim() || `Status changed to ${statusLabel(status)}`;
 
-  const techName = status === "in_progress" ? prompt("Technician name (optional):") : null;
-  const note = prompt("Add note (optional):");
+    try {
+      const docRef = db.collection("complaints").doc(id);
+      const doc = await docRef.get();
+      if (!doc.exists) {
+        showToast("Complaint not found", "error");
+        return;
+      }
+      const d = doc.data();
 
-  try {
-    const update = {
-      status: status,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-    if (techName) {
-      update.technicianName = techName;
-      update.technicianId = user.uid;
+      const update = {
+        status: status,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      if (techName) {
+        update.technicianName = techName;
+        update.technicianId = user.uid;
+      }
+
+      const noteObj = {
+        text: note,
+        by: user.name,
+        at: Date.now()
+      };
+
+      await docRef.update({
+        ...update,
+        notes: firebase.firestore.FieldValue.arrayUnion(noteObj)
+      });
+
+      // In-app notification for customer
+      await createNotification(
+        d.customerUid,
+        `Complaint ${statusLabel(status)}`,
+        note,
+        "complaint",
+        id
+      );
+
+      document.querySelector(".modal-overlay")?.classList.remove("active");
+      showToast("Status updated + Customer notified", "success");
+      loadComplaintsList();
+    } catch (e) {
+      showToast("Update failed: " + e.message, "error");
     }
-
-    const noteObj = {
-      text: note || `Status changed to ${statusLabel(status)}`,
-      by: user.name,
-      at: Date.now()
-    };
-
-    await db.collection("complaints").doc(id).update({
-      ...update,
-      notes: firebase.firestore.FieldValue.arrayUnion(noteObj)
-    });
-
-    showToast("Complaint updated successfully", "success");
-    loadComplaintsList();
-  } catch (e) {
-    showToast("Update failed: " + e.message, "error");
-  }
+  };
 }
 
 /* ========== CUSTOMER: My Complaints ========== */
 async function renderMyComplaints(area) {
   area.innerHTML = `
+    <div id="customerNotifications" class="card" style="display:none;border-left:4px solid var(--primary);">
+      <div class="card-header">
+        <h3 class="card-title">🔔 Notifications</h3>
+        <button class="btn btn-outline btn-sm" onclick="markAllNotificationsRead()">Mark all read</button>
+      </div>
+      <div id="notificationsList"></div>
+    </div>
+
     <div class="card">
       <div class="card-header">
         <h3 class="card-title">My Complaints</h3>
@@ -483,6 +592,7 @@ async function renderMyComplaints(area) {
   `;
 
   loadMyComplaints();
+  loadCustomerNotifications();
 }
 
 function showNewComplaintForm() {
@@ -491,6 +601,87 @@ function showNewComplaintForm() {
 
 function hideNewComplaintForm() {
   document.getElementById("newComplaintForm").style.display = "none";
+}
+
+async function loadCustomerNotifications() {
+  const box = document.getElementById("customerNotifications");
+  const list = document.getElementById("notificationsList");
+  if (!box || !list) return;
+
+  try {
+    const snap = await db.collection("notifications")
+      .where("customerUid", "==", user.uid)
+      .where("read", "==", false)
+      .orderBy("createdAt", "desc")
+      .limit(10)
+      .get();
+
+    if (snap.empty) {
+      // fallback without composite index
+      const snap2 = await db.collection("notifications")
+        .where("customerUid", "==", user.uid)
+        .limit(20)
+        .get();
+      let items = [];
+      snap2.forEach(doc => {
+        const d = doc.data();
+        if (!d.read) items.push({ id: doc.id, ...d });
+      });
+      items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      if (items.length === 0) {
+        box.style.display = "none";
+        return;
+      }
+      box.style.display = "block";
+      list.innerHTML = items.slice(0, 8).map(n => `
+        <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+          <strong>${n.title || "Update"}</strong>
+          <p style="margin:4px 0;color:var(--text-secondary);">${n.message || ""}</p>
+          <small style="color:var(--text-muted);">${n.createdAt ? new Date(n.createdAt.seconds * 1000).toLocaleString() : ""}</small>
+        </div>
+      `).join("");
+      return;
+    }
+
+    box.style.display = "block";
+    let html = "";
+    snap.forEach(doc => {
+      const n = doc.data();
+      html += `
+        <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+          <strong>${n.title || "Update"}</strong>
+          <p style="margin:4px 0;color:var(--text-secondary);">${n.message || ""}</p>
+          <small style="color:var(--text-muted);">${n.createdAt ? n.createdAt.toDate().toLocaleString() : ""}</small>
+        </div>`;
+    });
+    list.innerHTML = html;
+  } catch (e) {
+    console.warn("Notifications load:", e);
+    box.style.display = "none";
+  }
+}
+
+async function markAllNotificationsRead() {
+  try {
+    const snap = await db.collection("notifications")
+      .where("customerUid", "==", user.uid)
+      .where("read", "==", false)
+      .get();
+    const batch = db.batch();
+    snap.forEach(doc => batch.update(doc.ref, { read: true }));
+    // fallback if index missing
+    if (snap.empty) {
+      const snap2 = await db.collection("notifications").where("customerUid", "==", user.uid).get();
+      snap2.forEach(doc => {
+        if (!doc.data().read) batch.update(doc.ref, { read: true });
+      });
+    }
+    await batch.commit();
+    showToast("All notifications marked read", "success");
+    loadCustomerNotifications();
+  } catch (e) {
+    showToast("Could not mark read", "error");
+  }
 }
 
 async function loadMyComplaints() {
@@ -579,6 +770,25 @@ async function submitComplaint() {
   btn.textContent = "Submitting...";
 
   try {
+    // Try to attach full customer profile data
+    let extra = {};
+    try {
+      const q = await db.collection("customers").where("uid", "==", user.uid).limit(1).get();
+      if (!q.empty) {
+        const c = q.docs[0].data();
+        extra = {
+          customerPackage: c.package || "",
+          customerArea: c.area || "",
+          customerAddress: c.address || "",
+          customerOnu: c.onuSerial || "",
+          customerPort: c.fiberPort || "",
+          customerCnic: c.cnic || "",
+          customerRent: c.rent || 0,
+          customerStatus: c.status || ""
+        };
+      }
+    } catch (e) {}
+
     const complaint = {
       customerUid: user.uid,
       customerName: user.name,
@@ -594,6 +804,7 @@ async function submitComplaint() {
         by: user.name,
         at: Date.now()
       }],
+      ...extra,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
@@ -810,17 +1021,20 @@ async function loadCustomersList() {
     let html = `<div class="table-wrapper"><table>
       <thead><tr><th>Name</th><th>CNIC</th><th>Phone</th><th>Package</th><th>ONU</th><th>Status</th><th>Actions</th></tr></thead><tbody>`;
     docs.forEach(d => {
+      const phone = d.phone || "";
+      const waMsg = `Assalam o Alaikum ${d.name || ""}, FiberHub ISP se rabta kar rahe hain.`;
       html += `<tr>
         <td>${d.name || "-"}<br><small style="color:var(--text-muted)">${d.area || ""}</small></td>
         <td>${d.cnic || "-"}</td>
-        <td>${d.phone || "-"}</td>
+        <td>${phone || "-"}</td>
         <td>${d.package || "-"}</td>
         <td>${d.onuSerial || "-"}</td>
         <td><span class="status ${d.status === "active" ? "active" : "suspended"}">${d.status || "active"}</span></td>
-        <td>
+        <td style="white-space:nowrap;">
           <button class="btn btn-sm btn-outline" onclick="editCustomer('${d.id}')">Edit</button>
+          ${phone ? `<button class="btn btn-sm btn-outline" style="color:#25D366;" onclick="openWhatsApp('${phone}', '${waMsg.replace(/'/g, "\\'")}')" title="WhatsApp">WA</button>` : ""}
           ${d.email ? `<button class="btn btn-sm btn-outline" onclick="resetCustomerPassword('${d.email}')">Reset Pass</button>` : ""}
-          <button class="btn btn-sm btn-outline" onclick="deleteCustomer('${d.id}')">Del</button>
+          <button class="btn btn-sm btn-outline" onclick="deleteCustomer('${d.id}')" style="color:var(--danger);">Del</button>
         </td>
       </tr>`;
     });
@@ -855,13 +1069,39 @@ async function editCustomer(id) {
 }
 
 async function deleteCustomer(id) {
-  if (!confirm("Delete this customer?")) return;
+  if (!confirm("Delete this customer?\n\nCustomer record + login user bhi delete ho jayega.")) return;
   try {
+    const doc = await db.collection("customers").doc(id).get();
+    if (!doc.exists) {
+      showToast("Customer not found", "error");
+      return;
+    }
+    const data = doc.data();
+
+    // Delete customer document
     await db.collection("customers").doc(id).delete();
-    showToast("Customer deleted", "success");
+
+    // Also remove from users collection (login profile)
+    if (data.uid) {
+      try {
+        await db.collection("users").doc(data.uid).delete();
+      } catch (e) {
+        console.warn("users delete:", e);
+      }
+    } else if (data.email) {
+      // fallback: find by email
+      try {
+        const q = await db.collection("users").where("email", "==", data.email).limit(1).get();
+        if (!q.empty) await q.docs[0].ref.delete();
+      } catch (e) {}
+    }
+
+    // Note: Firebase Auth account itself cannot be fully deleted from client-side
+    // without Admin SDK / Cloud Function. Users doc delete prevents login access via role check.
+    showToast("Customer + login profile deleted", "success");
     loadCustomersList();
   } catch (e) {
-    showToast("Delete failed", "error");
+    showToast("Delete failed: " + (e.message || ""), "error");
   }
 }
 
@@ -1043,15 +1283,19 @@ async function loadBillsList() {
     let html = `<div class="table-wrapper"><table>
       <thead><tr><th>Customer</th><th>Month</th><th>Amount</th><th>Method</th><th>Status</th><th>Actions</th></tr></thead><tbody>`;
     docs.forEach(d => {
+      const phone = d.customerPhone || "";
       html += `<tr>
-        <td>${d.customerName || "-"}<br><small>${d.customerPhone || ""}</small></td>
+        <td>${d.customerName || "-"}<br><small>${phone}</small></td>
         <td>${d.month || "-"}</td>
         <td>₨ ${d.amount || 0}</td>
         <td>${d.method || "-"}</td>
         <td><span class="status ${d.status === "paid" ? "active" : "pending"}">${d.status}</span></td>
-        <td>
+        <td style="white-space:nowrap;">
           ${d.status === "pending" ? `<button class="btn btn-sm btn-primary" onclick="markPaid('${d.id}')">Mark Paid</button>` : ""}
+          <button class="btn btn-sm btn-outline" onclick="editBill('${d.id}')">Edit</button>
           <button class="btn btn-sm btn-outline" onclick="printBill('${d.id}')">PDF</button>
+          ${phone ? `<button class="btn btn-sm btn-outline" style="color:#25D366;" onclick="openWhatsApp('${phone}', 'Assalam o Alaikum ${d.customerName || ""}, aapka bill ${d.month || ""} – ₨${d.amount || 0} (${d.status}). FiberHub ISP.')" title="WhatsApp">WA</button>` : ""}
+          <button class="btn btn-sm btn-outline" onclick="deleteBill('${d.id}')" style="color:var(--danger);">Del</button>
         </td>
       </tr>`;
     });
@@ -1059,6 +1303,105 @@ async function loadBillsList() {
     el.innerHTML = html;
   } catch (e) {
     el.innerHTML = `<p style="color:var(--danger);padding:16px;">Error loading bills</p>`;
+  }
+}
+
+async function editBill(id) {
+  try {
+    const doc = await db.collection("bills").doc(id).get();
+    if (!doc.exists) {
+      showToast("Bill not found", "error");
+      return;
+    }
+    const d = doc.data();
+    const body = `
+      <div style="display:grid;gap:12px;">
+        <div class="form-field">
+          <label>Customer</label>
+          <input type="text" value="${d.customerName || ""}" disabled style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-muted);" />
+        </div>
+        <div class="form-field">
+          <label>Month *</label>
+          <input type="month" id="editBillMonth" value="${d.month || ""}" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);" />
+        </div>
+        <div class="form-field">
+          <label>Amount *</label>
+          <input type="number" id="editBillAmount" value="${d.amount || 0}" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);" />
+        </div>
+        <div class="form-field">
+          <label>Status</label>
+          <select id="editBillStatus" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);">
+            <option value="pending" ${d.status === "pending" ? "selected" : ""}>Pending</option>
+            <option value="paid" ${d.status === "paid" ? "selected" : ""}>Paid</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Method</label>
+          <select id="editBillMethod" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);">
+            <option value="cash" ${d.method === "cash" ? "selected" : ""}>Cash</option>
+            <option value="easypaisa" ${d.method === "easypaisa" ? "selected" : ""}>EasyPaisa</option>
+            <option value="jazzcash" ${d.method === "jazzcash" ? "selected" : ""}>JazzCash</option>
+            <option value="bank" ${d.method === "bank" ? "selected" : ""}>Bank</option>
+            <option value="" ${!d.method ? "selected" : ""}>—</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Txn / Receipt No</label>
+          <input type="text" id="editBillTxn" value="${d.txnNo || ""}" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);" />
+        </div>
+      </div>
+    `;
+    showModal("Edit Bill", body, `
+      <button class="btn btn-primary" id="btnSaveBillEdit">Save Changes</button>
+      <button class="btn btn-outline" onclick="this.closest('.modal-overlay').classList.remove('active')">Cancel</button>
+    `);
+
+    document.getElementById("btnSaveBillEdit").onclick = async () => {
+      const month = document.getElementById("editBillMonth").value;
+      const amount = Number(document.getElementById("editBillAmount").value);
+      const status = document.getElementById("editBillStatus").value;
+      const method = document.getElementById("editBillMethod").value;
+      const txnNo = document.getElementById("editBillTxn").value.trim();
+
+      if (!month || !amount) {
+        showToast("Month and Amount required", "error");
+        return;
+      }
+      try {
+        const update = {
+          month,
+          amount,
+          status,
+          method: method || null,
+          txnNo: txnNo || "",
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        if (status === "paid" && d.status !== "paid") {
+          update.paidAt = firebase.firestore.FieldValue.serverTimestamp();
+        }
+        await db.collection("bills").doc(id).update(update);
+        document.querySelector(".modal-overlay")?.classList.remove("active");
+        showToast("Bill updated", "success");
+        loadBillsList();
+        loadBillingStats();
+      } catch (e) {
+        showToast("Update failed: " + e.message, "error");
+      }
+    };
+  } catch (e) {
+    showToast("Error loading bill", "error");
+  }
+}
+
+async function deleteBill(id) {
+  if (!confirm("Delete this bill permanently?")) return;
+  try {
+    await db.collection("bills").doc(id).delete();
+    showToast("Bill deleted", "success");
+    loadBillsList();
+    loadBillingStats();
+  } catch (e) {
+    showToast("Delete failed: " + e.message, "error");
   }
 }
 
@@ -1871,7 +2214,47 @@ function statusLabel(status) {
   return map[status] || status;
 }
 
-function showModal(title, bodyHtml) {
+/** Format phone for WhatsApp (Pakistan 03xx → 92xx) */
+function formatWhatsAppPhone(phone) {
+  if (!phone) return "";
+  let p = String(phone).replace(/[^0-9]/g, "");
+  if (p.startsWith("0")) p = "92" + p.slice(1);
+  if (p.startsWith("92") && p.length >= 12) return p;
+  if (p.length === 10) return "92" + p;
+  return p;
+}
+
+/** Open WhatsApp chat with optional pre-filled message */
+function openWhatsApp(phone, message = "") {
+  const num = formatWhatsAppPhone(phone);
+  if (!num) {
+    showToast("Phone number not available", "error");
+    return;
+  }
+  const text = encodeURIComponent(message || "Assalam o Alaikum, FiberHub ISP se rabta kar rahe hain.");
+  const url = `https://wa.me/${num}?text=${text}`;
+  window.open(url, "_blank");
+}
+
+/** Create in-app notification for a customer */
+async function createNotification(customerUid, title, message, type = "complaint", refId = null) {
+  if (!customerUid) return;
+  try {
+    await db.collection("notifications").add({
+      customerUid,
+      title,
+      message,
+      type,
+      refId,
+      read: false,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (e) {
+    console.warn("Notification create failed:", e);
+  }
+}
+
+function showModal(title, bodyHtml, footerHtml = null) {
   let overlay = document.querySelector(".modal-overlay");
   if (!overlay) {
     overlay = document.createElement("div");
@@ -1886,7 +2269,7 @@ function showModal(title, bodyHtml) {
       </div>
       <div class="modal-body">${bodyHtml}</div>
       <div class="modal-footer">
-        <button class="btn btn-outline" onclick="this.closest('.modal-overlay').classList.remove('active')">Close</button>
+        ${footerHtml || `<button class="btn btn-outline" onclick="this.closest('.modal-overlay').classList.remove('active')">Close</button>`}
       </div>
     </div>
   `;
