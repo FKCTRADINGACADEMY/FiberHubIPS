@@ -1,0 +1,118 @@
+/* ============================================
+   FiberHub ISP - Dark & Light Themes
+   ============================================ */
+
+/* Dark Theme (Default) */
+.dark-theme {
+  --bg-main: #0a1628;
+  --bg-sidebar: #0d2137;
+  --bg-card: #112240;
+  --bg-hover: rgba(30, 136, 229, 0.1);
+  --border: rgba(255, 255, 255, 0.08);
+  --text-primary: #e8eef7;
+  --text-secondary: #a0aec0;
+  --text-muted: #718096;
+}
+
+/* Light Theme */
+.light-theme {
+  --bg-main: #f0f4f8;
+  --bg-sidebar: #ffffff;
+  --bg-card: #ffffff;
+  --bg-hover: rgba(30, 136, 229, 0.08);
+  --border: rgba(0, 0, 0, 0.08);
+  --text-primary: #1a202c;
+  --text-secondary: #4a5568;
+  --text-muted: #718096;
+}
+
+/* Light theme login page overrides */
+.light-theme.login-page .login-bg {
+  background: linear-gradient(135deg, #e8f4fd 0%, #f0f7ff 40%, #e3f2fd 100%);
+}
+
+.light-theme.login-page .bg-overlay {
+  background: 
+    radial-gradient(ellipse at 20% 50%, rgba(30, 136, 229, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(67, 160, 71, 0.08) 0%, transparent 40%);
+}
+
+.light-theme.login-page .brand-name {
+  color: #0d2137;
+}
+
+.light-theme.login-page .tagline {
+  color: #4a5568;
+}
+
+.light-theme.login-page .login-card {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(30, 136, 229, 0.15);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
+}
+
+.light-theme.login-page .login-title {
+  color: #0d2137;
+}
+
+.light-theme.login-page .login-subtitle {
+  color: #718096;
+}
+
+.light-theme.login-page .form-group input {
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  color: #1a202c;
+}
+
+.light-theme.login-page .form-group input::placeholder {
+  color: #a0aec0;
+}
+
+.light-theme.login-page .form-group input:focus {
+  background: #fff;
+  border-color: var(--primary);
+}
+
+.light-theme.login-page .form-group .input-icon {
+  color: #a0aec0;
+}
+
+.light-theme.login-page .toggle-password {
+  color: #a0aec0;
+}
+
+.light-theme.login-page .remember-me {
+  color: #4a5568;
+}
+
+.light-theme.login-page .divider {
+  color: #a0aec0;
+}
+
+.light-theme.login-page .divider::before,
+.light-theme.login-page .divider::after {
+  background: #e2e8f0;
+}
+
+.light-theme.login-page .feature-item {
+  color: #4a5568;
+}
+
+.light-theme.login-page .secure-badge {
+  color: #718096;
+}
+
+.light-theme.login-page .app-version {
+  color: #a0aec0;
+}
+
+.light-theme.login-page .theme-toggle {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #e2e8f0;
+  color: #1a202c;
+}
+
+.light-theme.login-page .demo-title {
+  color: #a0aec0;
+}
