@@ -3,7 +3,7 @@
  * Instant update: network-first + skipWaiting + claim
  * CACHE_VERSION must match version.json when you deploy
  */
-const CACHE_VERSION = "fiberhub-v1.9.3";
+const CACHE_VERSION = "fiberhub-v1.9.4";
 const CACHE_NAME = `fiberhub-${CACHE_VERSION}`;
 
 const ASSETS = [
