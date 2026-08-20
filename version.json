@@ -1,1 +1,1 @@
-{"version":"1.8.1","buildDate":"2026-08-20","notes":"WhatsApp buttons, complaint full data + notify, bill edit/delete, customer delete cleans login"}
+{"version":"1.8.2","buildDate":"2026-08-20","notes":"Complaint status buttons (Pending/Progress/Resolved) + notes, mobile card UI (no cut-off), status class fix, customer list always shows all statuses + last note"}
