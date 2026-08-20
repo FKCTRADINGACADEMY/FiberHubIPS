@@ -1127,15 +1127,125 @@ async function renderCustomers(area) {
     <div class="card">
       <div class="card-header">
         <h3 class="card-title">Customers</h3>
-        <button class="btn btn-primary" onclick="showCustomerForm()">+ New Customer</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('csvImportFile').click()">Import CSV</button>
+          <input type="file" id="csvImportFile" accept=".csv,text/csv" style="display:none" onchange="importCustomersCSV(event)" />
+          <button class="btn btn-outline btn-sm" onclick="exportCustomersCSV()">Export CSV</button>
+          <button class="btn btn-primary" onclick="showCustomerForm()">+ New Customer</button>
+        </div>
       </div>
       <div class="form-row" style="margin-bottom:12px;">
         <div class="form-field"><input type="text" id="customerSearch" placeholder="Search name, CNIC, phone, ONU..." oninput="loadCustomersList()" /></div>
       </div>
+      <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:8px;">CSV columns: name,phone,email,cnic,package,rent,area,address,onuSerial,fiberPort,status (login alag se banao)</p>
       <div id="customersList">Loading...</div>
     </div>
   `;
   loadCustomersList();
+}
+
+async function exportCustomersCSV() {
+  try {
+    const snap = await db.collection("customers").get();
+    const headers = ["name","phone","email","cnic","package","rent","area","address","onuSerial","fiberPort","status"];
+    const rows = [headers.join(",")];
+    snap.forEach(doc => {
+      const d = doc.data();
+      rows.push(headers.map(h => {
+        let v = d[h] != null ? String(d[h]) : "";
+        if (v.includes(",") || v.includes('"')) v = '"' + v.replace(/"/g, '""') + '"';
+        return v;
+      }).join(","));
+    });
+    const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "fiberhub-customers-" + new Date().toISOString().slice(0, 10) + ".csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast("Customers CSV exported", "success");
+    logActivity("backup", "Customers CSV exported");
+  } catch (e) {
+    showToast("Export failed: " + e.message, "error");
+  }
+}
+
+async function importCustomersCSV(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) {
+      showToast("CSV empty or invalid", "error");
+      return;
+    }
+    const parseRow = (line) => {
+      const out = [];
+      let cur = "", inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+          if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+          else inQ = !inQ;
+        } else if (ch === "," && !inQ) { out.push(cur.trim()); cur = ""; }
+        else cur += ch;
+      }
+      out.push(cur.trim());
+      return out;
+    };
+    const headers = parseRow(lines[0]).map(h => h.toLowerCase().replace(/\s+/g, ""));
+    const mapKey = (h) => {
+      if (h.includes("name") && !h.includes("user")) return "name";
+      if (h.includes("phone") || h === "mobile") return "phone";
+      if (h.includes("email")) return "email";
+      if (h.includes("cnic")) return "cnic";
+      if (h.includes("package") || h.includes("pkg")) return "package";
+      if (h.includes("rent") || h.includes("amount")) return "rent";
+      if (h.includes("area")) return "area";
+      if (h.includes("address")) return "address";
+      if (h.includes("onu")) return "onuSerial";
+      if (h.includes("port") || h.includes("fiber")) return "fiberPort";
+      if (h.includes("status")) return "status";
+      if (h.includes("gps")) return "gps";
+      return null;
+    };
+    let added = 0;
+    for (let i = 1; i < lines.length; i++) {
+      const cols = parseRow(lines[i]);
+      const row = {};
+      headers.forEach((h, idx) => {
+        const key = mapKey(h);
+        if (key) row[key] = cols[idx] || "";
+      });
+      if (!row.name || !row.phone) continue;
+      const data = {
+        name: row.name,
+        phone: row.phone,
+        email: (row.email || "").toLowerCase(),
+        cnic: row.cnic || "",
+        package: row.package || "20 Mbps",
+        rent: Number(row.rent) || 0,
+        area: row.area || "",
+        address: row.address || "",
+        onuSerial: row.onuSerial || "",
+        fiberPort: row.fiberPort || "",
+        gps: row.gps || "",
+        status: (row.status || "active").toLowerCase() === "suspended" ? "suspended" : "active",
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        createdBy: user.uid,
+        imported: true
+      };
+      await db.collection("customers").add(data);
+      added++;
+    }
+    showToast(added + " customers imported (login alag se create karein)", "success");
+    logActivity("customer", "CSV import: " + added + " customers");
+    loadCustomersList();
+  } catch (e) {
+    showToast("Import failed: " + e.message, "error");
+  }
+  event.target.value = "";
 }
 
 async function fillPackagesSelect(selectedName) {
@@ -1831,15 +1941,40 @@ async function printBill(id) {
     const doc = await db.collection("bills").doc(id).get();
     if (!doc.exists) return;
     const d = doc.data();
+    const total = (Number(d.amount) || 0) + (Number(d.lateFee) || 0);
+    // QR payload: bill id + amount + month (scannable reference)
+    const qrData = encodeURIComponent(`FiberHub|${id.slice(0, 12)}|${d.customerName || ""}|${d.month || ""}|PKR${total}|${d.status || ""}`);
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${qrData}`;
+
+    let company = "FiberHub ISP";
+    let companyPhone = "";
+    try {
+      const c = await db.collection("settings").doc("company").get();
+      if (c.exists) {
+        company = c.data().name || company;
+        companyPhone = c.data().phone || "";
+      }
+    } catch (e) {}
+
     const w = window.open("", "_blank");
     w.document.write(`
-      <html><head><title>Bill - ${d.customerName}</title>
-      <style>body{font-family:Arial;padding:40px;max-width:500px;margin:auto}
-      h1{color:#1e88e5} .row{display:flex;justify-content:space-between;margin:8px 0}
-      .total{font-size:1.3em;font-weight:bold;border-top:2px solid #333;padding-top:10px;margin-top:20px}
-      @media print{button{display:none}}</style></head><body>
-      <h1>FiberHub ISP</h1>
-      <p>Manage Your Network with Confidence</p><hr>
+      <html><head><title>Bill - ${d.customerName || ""}</title>
+      <style>
+        body{font-family:Arial,sans-serif;padding:32px;max-width:480px;margin:auto;color:#111}
+        h1{color:#0ea5e9;margin:0 0 4px;font-size:1.6rem}
+        .sub{color:#666;margin:0 0 12px;font-size:0.9rem}
+        .row{display:flex;justify-content:space-between;margin:8px 0;font-size:0.95rem}
+        .total{font-size:1.25em;font-weight:bold;border-top:2px solid #222;padding-top:12px;margin-top:16px}
+        .qr-box{text-align:center;margin:20px 0 8px}
+        .qr-box img{border:1px solid #ddd;border-radius:8px;padding:6px}
+        .badge{display:inline-block;padding:4px 10px;border-radius:20px;font-size:0.8rem;font-weight:600;
+          background:${d.status === "paid" ? "#dcfce7" : "#fef3c7"};color:${d.status === "paid" ? "#166534" : "#92400e"}}
+        @media print{button{display:none}}
+      </style></head><body>
+      <h1>${company}</h1>
+      <p class="sub">Manage Your Network with Confidence${companyPhone ? " · " + companyPhone : ""}</p>
+      <hr>
+      <div class="row"><span>Bill ID:</span><span>${id.slice(0, 10)}</span></div>
       <div class="row"><span>Customer:</span><strong>${d.customerName || "-"}</strong></div>
       <div class="row"><span>Phone:</span><span>${d.customerPhone || "-"}</span></div>
       <div class="row"><span>Month:</span><span>${d.month || "-"}</span></div>
@@ -1847,10 +1982,14 @@ async function printBill(id) {
       <div class="row"><span>Txn No:</span><span>${d.txnNo || "-"}</span></div>
       <div class="row"><span>Bill Amount:</span><span>₨ ${d.amount || 0}</span></div>
       ${(Number(d.lateFee) > 0) ? `<div class="row"><span>Late Fee:</span><span>₨ ${d.lateFee}</span></div>` : ""}
-      <div class="row total"><span>Total:</span><span>₨ ${(Number(d.amount) || 0) + (Number(d.lateFee) || 0)}</span></div>
-      <div class="row"><span>Status:</span><strong>${d.status}</strong></div>
-      <br><button onclick="window.print()">Print / Save PDF</button>
-      <p style="margin-top:30px;font-size:11px;color:#999;text-align:center;">Software By Fazul Khan Chandio • 03333909816</p>
+      <div class="row total"><span>Total:</span><span>₨ ${total}</span></div>
+      <div class="row"><span>Status:</span><span class="badge">${(d.status || "-").toUpperCase()}</span></div>
+      <div class="qr-box">
+        <img src="${qrUrl}" alt="QR" width="120" height="120" />
+        <p style="font-size:11px;color:#888;margin:6px 0 0;">Scan for bill reference</p>
+      </div>
+      <button onclick="window.print()" style="padding:10px 20px;font-size:1rem;cursor:pointer;border-radius:8px;border:1px solid #ccc;background:#0ea5e9;color:#fff;">Print / Save PDF</button>
+      <p style="margin-top:28px;font-size:11px;color:#999;text-align:center;">Software By Fazul Khan Chandio · 03333909816</p>
       </body></html>
     `);
     w.document.close();
@@ -2060,38 +2199,54 @@ async function deleteUserDoc(uid) {
 async function renderNetwork(area) {
   area.innerHTML = `
     <div class="stats-grid" id="networkStats">
-      <div class="stat-card"><div class="stat-icon blue">${iconNetwork()}</div><div class="stat-info"><h3 id="nOlts">-</h3><p>OLTs</p></div></div>
-      <div class="stat-card"><div class="stat-icon green">${iconCheck()}</div><div class="stat-info"><h3 id="nOnu">-</h3><p>ONU Stock</p></div></div>
-      <div class="stat-card"><div class="stat-icon orange">${iconTools()}</div><div class="stat-info"><h3 id="nRouter">-</h3><p>Router Stock</p></div></div>
-      <div class="stat-card"><div class="stat-icon purple">${iconNetwork()}</div><div class="stat-info"><h3 id="nSplitter">-</h3><p>Splitters</p></div></div>
+      <div class="stat-card stat-modern accent-blue"><div class="stat-icon blue">${iconNetwork()}</div><div class="stat-info"><h3 id="nOlts">-</h3><p>OLTs</p></div></div>
+      <div class="stat-card stat-modern accent-green"><div class="stat-icon green">${iconCheck()}</div><div class="stat-info"><h3 id="nOnu">-</h3><p>ONU Stock</p></div></div>
+      <div class="stat-card stat-modern accent-orange"><div class="stat-icon orange">${iconTools()}</div><div class="stat-info"><h3 id="nRouter">-</h3><p>Router Stock</p></div></div>
+      <div class="stat-card stat-modern accent-purple"><div class="stat-icon purple">${iconNetwork()}</div><div class="stat-info"><h3 id="nSplitter">-</h3><p>Splitters</p></div></div>
     </div>
 
-    <div class="card">
+    <div class="card dash-card">
       <div class="card-header">
         <h3 class="card-title">Add Network Item</h3>
       </div>
       <div class="form-row">
-        <div class="form-field"><label>Type</label>
+        <div class="form-field"><label>Type *</label>
           <select id="netType">
             <option value="olt">OLT</option>
+            <option value="pon">PON Port</option>
+            <option value="splitter">Splitter</option>
             <option value="onu">ONU Stock</option>
             <option value="router">Router Stock</option>
-            <option value="splitter">Splitter</option>
             <option value="cable">Fiber Cable</option>
             <option value="junction">Junction Box</option>
           </select>
         </div>
-        <div class="form-field"><label>Name / Model</label><input id="netName" placeholder="e.g. Huawei MA5800" /></div>
+        <div class="form-field"><label>Name / Model *</label><input id="netName" placeholder="e.g. Huawei MA5800 / PON-1" /></div>
+        <div class="form-field"><label>Parent OLT / Link</label><input id="netParent" placeholder="e.g. OLT-Main (optional)" /></div>
+        <div class="form-field"><label>PON / Port</label><input id="netPon" placeholder="e.g. 0/1/1" /></div>
         <div class="form-field"><label>Quantity / Ports</label><input id="netQty" type="number" value="1" /></div>
-        <div class="form-field"><label>Location / Notes</label><input id="netLoc" placeholder="Site / Notes" /></div>
+        <div class="form-field"><label>Location / Notes</label><input id="netLoc" placeholder="Site / Cabinet" /></div>
       </div>
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:12px;">Hierarchy tip: OLT → PON Port → Splitter → ONU. Parent field se link rakho.</p>
       <button class="btn btn-primary" onclick="saveNetworkItem()">Add Item</button>
     </div>
 
-    <div class="card">
+    <div class="card dash-card">
       <div class="card-header">
         <h3 class="card-title">Network Inventory</h3>
-        <button class="btn btn-outline btn-sm" onclick="loadNetworkList()">Refresh</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <select id="netFilter" onchange="loadNetworkList()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-main);color:var(--text-primary);">
+            <option value="all">All Types</option>
+            <option value="olt">OLT</option>
+            <option value="pon">PON</option>
+            <option value="splitter">Splitter</option>
+            <option value="onu">ONU</option>
+            <option value="router">Router</option>
+            <option value="cable">Cable</option>
+            <option value="junction">Junction</option>
+          </select>
+          <button class="btn btn-outline btn-sm" onclick="loadNetworkList()">Refresh</button>
+        </div>
       </div>
       <div id="networkList">Loading...</div>
     </div>
@@ -2103,6 +2258,8 @@ async function saveNetworkItem() {
   const data = {
     type: document.getElementById("netType").value,
     name: document.getElementById("netName").value.trim(),
+    parent: document.getElementById("netParent").value.trim(),
+    ponPort: document.getElementById("netPon").value.trim(),
     qty: Number(document.getElementById("netQty").value) || 1,
     location: document.getElementById("netLoc").value.trim(),
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -2113,7 +2270,10 @@ async function saveNetworkItem() {
   try {
     await db.collection("network").add(data);
     showToast("Item added", "success");
+    logActivity("network", "Network item added: " + data.type + " · " + data.name);
     document.getElementById("netName").value = "";
+    document.getElementById("netParent").value = "";
+    document.getElementById("netPon").value = "";
     document.getElementById("netLoc").value = "";
     loadNetworkList();
   } catch (e) {
@@ -2124,11 +2284,12 @@ async function saveNetworkItem() {
 async function loadNetworkList() {
   const el = document.getElementById("networkList");
   if (!el) return;
+  const filter = document.getElementById("netFilter")?.value || "all";
 
   try {
     const snap = await db.collection("network").get();
     let docs = [];
-    let counts = { olt: 0, onu: 0, router: 0, splitter: 0 };
+    let counts = { olt: 0, onu: 0, router: 0, splitter: 0, pon: 0 };
 
     snap.forEach(doc => {
       const d = { id: doc.id, ...doc.data() };
@@ -2145,17 +2306,23 @@ async function loadNetworkList() {
     if (nRouter) nRouter.textContent = counts.router;
     if (nSplitter) nSplitter.textContent = counts.splitter;
 
+    if (filter !== "all") docs = docs.filter(d => d.type === filter);
+
     if (docs.length === 0) {
       el.innerHTML = `<div class="empty-state"><p>No network items yet</p></div>`;
       return;
     }
 
+    docs.sort((a, b) => (a.type || "").localeCompare(b.type || "") || (a.name || "").localeCompare(b.name || ""));
+
     let html = `<div class="table-wrapper"><table>
-      <thead><tr><th>Type</th><th>Name</th><th>Qty</th><th>Location</th><th>Action</th></tr></thead><tbody>`;
+      <thead><tr><th>Type</th><th>Name</th><th>Parent</th><th>PON/Port</th><th>Qty</th><th>Location</th><th>Action</th></tr></thead><tbody>`;
     docs.forEach(d => {
       html += `<tr>
-        <td>${(d.type || "").toUpperCase()}</td>
+        <td><span class="status ${d.type === "olt" ? "resolved" : d.type === "onu" ? "active" : "pending"}">${(d.type || "").toUpperCase()}</span></td>
         <td>${d.name || "-"}</td>
+        <td>${d.parent || "-"}</td>
+        <td>${d.ponPort || "-"}</td>
         <td>${d.qty || 1}</td>
         <td>${d.location || "-"}</td>
         <td><button class="btn btn-sm btn-outline" onclick="deleteNetworkItem('${d.id}')">Del</button></td>
