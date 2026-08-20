@@ -1,6 +1,7 @@
 /**
  * FiberHub ISP - Authentication Module
- * Real Firebase + Self Registration
+ * Public registration DISABLED
+ * Only Admin can create users
  */
 
 const ROLES = {
@@ -11,68 +12,13 @@ const ROLES = {
 };
 
 /**
- * Register new customer
- */
-async function register(name, email, phone, password) {
-  email = email.trim().toLowerCase();
-  name = name.trim();
-  phone = (phone || "").trim();
-
-  if (!auth || !db) {
-    return { success: false, error: "Firebase not connected" };
-  }
-
-  if (password.length < 6) {
-    return { success: false, error: "Password must be at least 6 characters" };
-  }
-
-  try {
-    // Create Auth account
-    const result = await auth.createUserWithEmailAndPassword(email, password);
-    const uid = result.user.uid;
-
-    // Create Firestore user document (auto tracking)
-    await db.collection("users").doc(uid).set({
-      name: name,
-      email: email,
-      phone: phone,
-      role: ROLES.CUSTOMER,
-      uid: uid,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-    // Update display name
-    try {
-      await result.user.updateProfile({ displayName: name });
-    } catch (e) {}
-
-    // Auto login after register
-    const session = {
-      uid: uid,
-      email: email,
-      name: name,
-      role: ROLES.CUSTOMER,
-      phone: phone,
-      loginAt: Date.now()
-    };
-    saveSession(session, true);
-
-    return { success: true, user: session };
-  } catch (error) {
-    console.error("Register error:", error);
-    return { success: false, error: getFriendlyError(error.code) };
-  }
-}
-
-/**
- * Login with email/password
+ * Login
  */
 async function login(email, password, remember = false) {
   email = email.trim().toLowerCase();
 
   if (!auth) {
-    return { success: false, error: "Firebase not connected. Check firebase-config.js" };
+    return { success: false, error: "Firebase not connected" };
   }
 
   try {
@@ -83,7 +29,6 @@ async function login(email, password, remember = false) {
     await auth.setPersistence(persistence);
     const result = await auth.signInWithEmailAndPassword(email, password);
     
-    // Get user details from Firestore
     const userDoc = await db.collection("users").doc(result.user.uid).get();
     let role = ROLES.CUSTOMER;
     let name = result.user.displayName || email.split("@")[0];
@@ -95,7 +40,6 @@ async function login(email, password, remember = false) {
       name = data.name || name;
       phone = data.phone || "";
     } else {
-      // Auto-create if missing
       await db.collection("users").doc(result.user.uid).set({
         name: name,
         email: email,
@@ -118,6 +62,58 @@ async function login(email, password, remember = false) {
     return { success: true, user: session };
   } catch (error) {
     console.error("Login error:", error);
+    return { success: false, error: getFriendlyError(error.code) };
+  }
+}
+
+/**
+ * Admin creates a new user (without logging out admin)
+ * Uses secondary Firebase app
+ */
+async function adminCreateUser(name, email, phone, password, role) {
+  name = name.trim();
+  email = email.trim().toLowerCase();
+  phone = (phone || "").trim();
+  role = role || "customer";
+
+  if (!name || !email || !password) {
+    return { success: false, error: "Name, Email and Password required" };
+  }
+  if (password.length < 6) {
+    return { success: false, error: "Password min 6 characters" };
+  }
+
+  try {
+    // Secondary app so admin session is not replaced
+    const secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
+    const secondaryAuth = secondaryApp.auth();
+
+    const result = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+    const uid = result.user.uid;
+
+    await db.collection("users").doc(uid).set({
+      name: name,
+      email: email,
+      phone: phone,
+      role: role,
+      uid: uid,
+      createdBy: getCurrentUser()?.uid || null,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Clean up secondary app
+    await secondaryAuth.signOut();
+    await secondaryApp.delete();
+
+    return { success: true, uid: uid, message: "User created successfully" };
+  } catch (error) {
+    console.error("Create user error:", error);
+    try {
+      const apps = firebase.apps;
+      const sec = apps.find(a => a.name === "Secondary");
+      if (sec) await sec.delete();
+    } catch (e) {}
     return { success: false, error: getFriendlyError(error.code) };
   }
 }

@@ -52,6 +52,7 @@ function setupSidebar() {
   }
 
   if (role === "admin") {
+    html += navItem("users", "Users", iconUsers());
     html += navItem("network", "Network", iconNetwork());
     html += navItem("reports", "Reports", iconReports());
     html += navItem("settings", "Settings", iconSettings());
@@ -122,6 +123,7 @@ function loadModule(name) {
     customers: "Customer Management",
     billing: "Billing & Payments",
     complaints: "Complaint System",
+    users: "User Management",
     network: "Network Module",
     reports: "Reports & Analytics",
     settings: "Settings",
@@ -137,6 +139,7 @@ function loadModule(name) {
     case "customers": renderCustomers(area); break;
     case "billing": renderBilling(area); break;
     case "complaints": renderComplaints(area); break;
+    case "users": renderUsers(area); break;
     case "network": renderNetwork(area); break;
     case "reports": renderReports(area); break;
     case "settings": renderSettings(area); break;
@@ -589,19 +592,150 @@ function renderBilling(area) {
   `;
 }
 
+/* ========== USERS (Admin only) ========== */
+async function renderUsers(area) {
+  area.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Create New User</h3>
+      </div>
+      <div class="form-row">
+        <div class="form-field">
+          <label>Full Name *</label>
+          <input type="text" id="newUserName" placeholder="Full Name" />
+        </div>
+        <div class="form-field">
+          <label>Email *</label>
+          <input type="email" id="newUserEmail" placeholder="email@example.com" />
+        </div>
+        <div class="form-field">
+          <label>Phone</label>
+          <input type="tel" id="newUserPhone" placeholder="03XXXXXXXXX" />
+        </div>
+        <div class="form-field">
+          <label>Password *</label>
+          <input type="text" id="newUserPassword" placeholder="Min 6 characters" />
+        </div>
+        <div class="form-field">
+          <label>Role *</label>
+          <select id="newUserRole">
+            <option value="customer">Customer</option>
+            <option value="billing">Billing Staff</option>
+            <option value="technician">Technician</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="createUserBtn" onclick="createNewUser()">Create User</button>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">All Users</h3>
+        <button class="btn btn-outline btn-sm" onclick="loadUsersList()">Refresh</button>
+      </div>
+      <div id="usersList">Loading...</div>
+    </div>
+  `;
+  loadUsersList();
+}
+
+async function createNewUser() {
+  const name = document.getElementById("newUserName").value;
+  const email = document.getElementById("newUserEmail").value;
+  const phone = document.getElementById("newUserPhone").value;
+  const password = document.getElementById("newUserPassword").value;
+  const role = document.getElementById("newUserRole").value;
+  const btn = document.getElementById("createUserBtn");
+
+  btn.disabled = true;
+  btn.textContent = "Creating...";
+
+  const result = await adminCreateUser(name, email, phone, password, role);
+
+  if (result.success) {
+    showToast("User created successfully!", "success");
+    document.getElementById("newUserName").value = "";
+    document.getElementById("newUserEmail").value = "";
+    document.getElementById("newUserPhone").value = "";
+    document.getElementById("newUserPassword").value = "";
+    loadUsersList();
+  } else {
+    showToast(result.error || "Failed to create user", "error");
+  }
+
+  btn.disabled = false;
+  btn.textContent = "Create User";
+}
+
+async function loadUsersList() {
+  const el = document.getElementById("usersList");
+  if (!el) return;
+  el.innerHTML = `<p style="text-align:center;padding:20px;color:var(--text-muted);">Loading...</p>`;
+
+  try {
+    const snap = await db.collection("users").orderBy("createdAt", "desc").get();
+    
+    if (snap.empty) {
+      el.innerHTML = `<p style="color:var(--text-muted);padding:16px;">No users found</p>`;
+      return;
+    }
+
+    let html = `<div class="table-wrapper"><table>
+      <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Created</th></tr></thead><tbody>`;
+
+    snap.forEach(doc => {
+      const d = doc.data();
+      const date = d.createdAt ? d.createdAt.toDate().toLocaleDateString() : "-";
+      const roleColor = d.role === "admin" ? "purple" : d.role === "technician" ? "orange" : d.role === "billing" ? "green" : "blue";
+      html += `<tr>
+        <td>${d.name || "-"}</td>
+        <td>${d.email || "-"}</td>
+        <td>${d.phone || "-"}</td>
+        <td><span class="status ${d.role === "admin" ? "resolved" : d.role === "customer" ? "active" : "pending"}">${d.role || "customer"}</span></td>
+        <td>${date}</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+    el.innerHTML = html;
+  } catch (e) {
+    // Fallback without orderBy
+    try {
+      const snap = await db.collection("users").get();
+      let docs = [];
+      snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+      
+      let html = `<div class="table-wrapper"><table>
+        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th></tr></thead><tbody>`;
+      docs.forEach(d => {
+        html += `<tr>
+          <td>${d.name || "-"}</td>
+          <td>${d.email || "-"}</td>
+          <td>${d.phone || "-"}</td>
+          <td><span class="status active">${d.role || "customer"}</span></td>
+        </tr>`;
+      });
+      html += `</tbody></table></div>`;
+      el.innerHTML = html;
+    } catch (e2) {
+      el.innerHTML = `<p style="color:var(--danger);padding:16px;">Error loading users</p>`;
+    }
+  }
+}
+
 function renderNetwork(area) {
   area.innerHTML = `<div class="card"><div class="card-header"><h3 class="card-title">Network Module</h3></div>
-    <p style="color:var(--text-muted);padding:20px;">Coming soon.</p></div>`;
+    <p style="color:var(--text-muted);padding:20px;">Coming soon - OLT, PON Port, Splitter, Fiber, ONU/Router Stock</p></div>`;
 }
 
 function renderReports(area) {
   area.innerHTML = `<div class="card"><div class="card-header"><h3 class="card-title">Reports</h3></div>
-    <p style="color:var(--text-muted);padding:20px;">Coming soon.</p></div>`;
+    <p style="color:var(--text-muted);padding:20px;">Coming soon - Daily/Monthly Collection, Profit/Loss, Excel/PDF Export</p></div>`;
 }
 
 function renderSettings(area) {
   area.innerHTML = `<div class="card"><div class="card-header"><h3 class="card-title">Settings</h3></div>
-    <p style="color:var(--text-muted);padding:20px;">Coming soon.</p></div>`;
+    <p style="color:var(--text-muted);padding:20px;">Coming soon - Packages, Areas, SMS/WhatsApp Templates, Company Details</p></div>`;
 }
 
 function renderTechnician(area) {
