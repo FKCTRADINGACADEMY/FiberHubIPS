@@ -12,7 +12,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupUserInfo();
   setupSidebar();
   setupEvents();
-  const startPage = user.role === "customer" ? "my-complaints"
+  const startPage = user.role === "customer" ? "my-home"
     : user.role === "technician" ? "technician"
     : "dashboard";
   loadModule(startPage);
@@ -118,6 +118,7 @@ function setupSidebar() {
   }
 
   if (role === "customer") {
+    html += navItem("my-home", "Home", iconDashboard());
     html += navItem("my-complaints", "My Complaints", iconComplaint());
     html += navItem("my-bills", "My Bills / Renewal", iconBilling());
     html += navItem("my-profile", "My Profile", iconUsers());
@@ -181,6 +182,7 @@ function loadModule(name) {
     reports: "Reports & Analytics",
     settings: "Settings",
     technician: "Technician Panel",
+    "my-home": "Home",
     "my-complaints": "My Complaints",
     "my-bills": "My Bills & Renewal",
     "my-profile": "My Profile"
@@ -197,6 +199,7 @@ function loadModule(name) {
     case "reports": renderReports(area); break;
     case "settings": renderSettings(area); break;
     case "technician": renderTechnician(area); break;
+    case "my-home": renderCustomerHome(area); break;
     case "my-complaints": renderMyComplaints(area); break;
     case "my-bills": renderMyBills(area); break;
     case "my-profile": renderMyProfile(area); break;
@@ -784,6 +787,205 @@ async function updateComplaintStatus(id) {
       showToast("Update failed: " + e.message, "error");
     }
   };
+}
+
+/* ========== CUSTOMER HOME ========== */
+async function getMyCustomerRecord() {
+  try {
+    if (user.email) {
+      const byEmail = await db.collection("customers").where("email", "==", user.email).limit(1).get();
+      if (!byEmail.empty) return { id: byEmail.docs[0].id, ...byEmail.docs[0].data() };
+    }
+    if (user.phone) {
+      const byPhone = await db.collection("customers").where("phone", "==", user.phone).limit(1).get();
+      if (!byPhone.empty) return { id: byPhone.docs[0].id, ...byPhone.docs[0].data() };
+    }
+    if (user.uid) {
+      const byUid = await db.collection("customers").where("uid", "==", user.uid).limit(1).get();
+      if (!byUid.empty) return { id: byUid.docs[0].id, ...byUid.docs[0].data() };
+    }
+  } catch (e) {
+    console.warn("getMyCustomerRecord:", e);
+  }
+  return null;
+}
+
+async function renderCustomerHome(area) {
+  const u = getCurrentUser() || user;
+  const greet = new Date().getHours() < 12 ? "Assalam o Alaikum" : new Date().getHours() < 17 ? "Good Afternoon" : "Good Evening";
+
+  area.innerHTML = `
+    <div class="dash-hero" style="margin-bottom:14px;">
+      <div class="dash-hero-text">
+        <h2>${greet}, ${(u.name || "Customer").split(" ")[0]} 👋</h2>
+        <p>Aapka connection summary</p>
+      </div>
+      <div class="dash-hero-actions">
+        <button class="btn btn-primary btn-sm" onclick="loadModule('my-complaints')">+ Complaint</button>
+        <button class="btn btn-outline btn-sm" onclick="loadModule('my-bills')">Bills</button>
+      </div>
+    </div>
+
+    <div id="custPackageCard" class="card dash-card">
+      <p style="color:var(--text-muted);">Loading package…</p>
+    </div>
+
+    <div id="custDueBills" class="card dash-card">
+      <div class="card-header"><h3 class="card-title">Due Bills</h3>
+        <button class="btn btn-outline btn-sm" onclick="loadModule('my-bills')">All Bills</button>
+      </div>
+      <div id="custDueBillsBody"><p style="color:var(--text-muted);">Loading…</p></div>
+    </div>
+
+    <div id="custPayInfo" class="card dash-card">
+      <div class="card-header"><h3 class="card-title">Payment Numbers</h3></div>
+      <div id="custPayBody"><p style="color:var(--text-muted);">Loading…</p></div>
+    </div>
+
+    <div class="card dash-card">
+      <div class="card-header"><h3 class="card-title">Open Complaints</h3>
+        <button class="btn btn-outline btn-sm" onclick="loadModule('my-complaints')">View All</button>
+      </div>
+      <div id="custOpenComplaints"><p style="color:var(--text-muted);">Loading…</p></div>
+    </div>
+  `;
+
+  // Parallel load
+  const [cust, companySnap, billSnap, compSnap] = await Promise.all([
+    getMyCustomerRecord(),
+    db.collection("settings").doc("company").get().catch(() => null),
+    db.collection("bills").get().catch(() => null),
+    db.collection("complaints").get().catch(() => null)
+  ]);
+
+  // Package card
+  const pkgEl = document.getElementById("custPackageCard");
+  if (pkgEl) {
+    if (!cust) {
+      pkgEl.innerHTML = `<p style="color:var(--text-muted);">Customer profile office se link nahi mila. Email/phone match check karein.</p>`;
+    } else {
+      const st = (cust.status || "active").toLowerCase();
+      const stClass = st === "active" ? "active" : st === "suspended" ? "pending" : "pending";
+      pkgEl.innerHTML = `
+        <div class="card-header" style="margin-bottom:12px;">
+          <h3 class="card-title">My Package</h3>
+          <span class="status ${stClass}">${st.toUpperCase()}</span>
+        </div>
+        <div class="stats-grid" style="margin-bottom:0;">
+          <div class="stat-card stat-modern accent-blue">
+            <div class="stat-icon blue">${iconNetwork()}</div>
+            <div class="stat-info"><h3 style="font-size:1.1rem;">${cust.package || "-"}</h3><p>Package</p></div>
+          </div>
+          <div class="stat-card stat-modern accent-teal">
+            <div class="stat-icon green">${iconBill()}</div>
+            <div class="stat-info"><h3 style="font-size:1.1rem;">₨ ${(Number(cust.rent) || 0).toLocaleString()}</h3><p>Monthly Rent</p></div>
+          </div>
+          <div class="stat-card stat-modern accent-purple">
+            <div class="stat-icon purple">${iconUsers()}</div>
+            <div class="stat-info"><h3 style="font-size:1rem;">${cust.area || "-"}</h3><p>Area</p></div>
+          </div>
+        </div>
+        ${cust.onuSerial ? `<p style="margin-top:10px;font-size:0.8rem;color:var(--text-muted);">ONU: ${cust.onuSerial}${cust.fiberPort ? " · Port: " + cust.fiberPort : ""}</p>` : ""}
+      `;
+    }
+  }
+
+  // Due bills
+  const dueBody = document.getElementById("custDueBillsBody");
+  if (dueBody && billSnap) {
+    const myId = cust?.id;
+    const pending = [];
+    billSnap.forEach(doc => {
+      const d = doc.data();
+      if (d.status !== "pending") return;
+      const match = (myId && d.customerId === myId) ||
+        (user.phone && d.customerPhone === user.phone) ||
+        (cust?.phone && d.customerPhone === cust.phone);
+      if (match) pending.push({ id: doc.id, ...d });
+    });
+    pending.sort((a, b) => String(b.month || "").localeCompare(String(a.month || "")));
+    if (pending.length === 0) {
+      dueBody.innerHTML = `<p style="color:var(--success);font-weight:600;">✓ Koi pending bill nahi</p>`;
+    } else {
+      dueBody.innerHTML = pending.map(b => {
+        const total = (Number(b.amount) || 0) + (Number(b.lateFee) || 0);
+        return `<div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div>
+            <strong>${b.month || "-"}</strong>
+            <div style="font-size:0.85rem;color:var(--text-muted);">₨ ${total.toLocaleString()}${b.lateFee ? " (incl. late fee)" : ""}</div>
+          </div>
+          <span class="status pending">PENDING</span>
+        </div>`;
+      }).join("") +
+      `<p style="margin-top:10px;font-size:0.8rem;color:var(--text-muted);">Payment ke baad receipt office ko bhej dein ya WhatsApp karein.</p>`;
+    }
+  }
+
+  // Payment numbers
+  const payBody = document.getElementById("custPayBody");
+  if (payBody) {
+    const co = companySnap && companySnap.exists ? companySnap.data() : {};
+    const rows = [];
+    if (co.easypaisa) rows.push({ label: "EasyPaisa", num: co.easypaisa, color: "#00a651" });
+    if (co.jazzcash) rows.push({ label: "JazzCash", num: co.jazzcash, color: "#c41230" });
+    if (co.bank) rows.push({ label: "Bank / Other", num: co.bank, color: "var(--primary)" });
+    if (co.whatsapp) rows.push({ label: "WhatsApp Support", num: co.whatsapp, color: "#25D366" });
+    if (co.phone) rows.push({ label: "Office Phone", num: co.phone, color: "var(--text-secondary)" });
+
+    if (rows.length === 0) {
+      payBody.innerHTML = `<p style="color:var(--text-muted);">Office ne abhi payment numbers Settings mein save nahi kiye.</p>`;
+    } else {
+      const refHint = (cust?.phone || user.phone || user.name || "apna number");
+      payBody.innerHTML = rows.map(r => `
+        <div style="padding:12px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:0.75rem;font-weight:700;color:${r.color};">${r.label}</div>
+            <strong style="font-size:1.05rem;letter-spacing:0.02em;">${r.num}</strong>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-sm btn-outline" onclick="navigator.clipboard.writeText('${String(r.num).replace(/'/g, "")}');showToast('Copied!','success')">Copy</button>
+            ${r.label.includes("WhatsApp") || r.label.includes("Phone")
+              ? (r.label.includes("WhatsApp")
+                ? `<button class="btn btn-sm btn-outline" style="color:#25D366;" onclick="openWhatsApp('${r.num}','Assalam o Alaikum, maine bill payment ki hai. Name: ${u.name || ""}')">WA</button>`
+                : `<a class="btn btn-sm btn-primary" href="tel:${r.num}">Call</a>`)
+              : ""}
+          </div>
+        </div>
+      `).join("") +
+      `<p style="margin-top:12px;font-size:0.8rem;color:var(--text-muted);">Payment reference mein <strong>${refHint}</strong> likhein taake bill identify ho sake.</p>`;
+    }
+  }
+
+  // Open complaints
+  const ocEl = document.getElementById("custOpenComplaints");
+  if (ocEl && compSnap) {
+    const open = [];
+    compSnap.forEach(doc => {
+      const d = doc.data();
+      if (d.status === "resolved") return;
+      const match = d.customerUid === user.uid ||
+        (user.email && d.customerEmail === user.email) ||
+        (user.phone && d.customerPhone === user.phone);
+      if (match) open.push({ id: doc.id, ...d });
+    });
+    open.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+    if (open.length === 0) {
+      ocEl.innerHTML = `<p style="color:var(--text-muted);">Koi open complaint nahi · <a href="#" onclick="loadModule('my-complaints');return false;" style="color:var(--primary);">Nayi complaint</a></p>`;
+    } else {
+      ocEl.innerHTML = `<div class="complaint-cards">${open.slice(0, 5).map(d => {
+        const date = d.createdAt?.toDate ? d.createdAt.toDate().toLocaleDateString() : "-";
+        return `<div class="complaint-card" style="cursor:pointer;" onclick="loadModule('my-complaints')">
+          <div class="complaint-card-header">
+            <div>
+              <strong>${d.issue || "Complaint"}</strong>
+              <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">${date}${d.technicianName ? " · Tech: " + d.technicianName : ""}</div>
+            </div>
+            <span class="status ${statusClass(d.status)}">${statusLabel(d.status)}</span>
+          </div>
+        </div>`;
+      }).join("")}</div>`;
+    }
+  }
 }
 
 /* ========== CUSTOMER: My Complaints ========== */
@@ -2666,7 +2868,11 @@ async function renderSettings(area) {
         <div class="form-field"><label>Phone</label><input id="setPhone" placeholder="03XXXXXXXXX" /></div>
         <div class="form-field"><label>Address</label><input id="setAddress" placeholder="Office Address" /></div>
         <div class="form-field"><label>Support WhatsApp</label><input id="setWhatsapp" placeholder="03XXXXXXXXX" /></div>
+        <div class="form-field"><label>EasyPaisa Number</label><input id="setEasypaisa" placeholder="03XXXXXXXXX" /></div>
+        <div class="form-field"><label>JazzCash Number</label><input id="setJazzcash" placeholder="03XXXXXXXXX" /></div>
+        <div class="form-field"><label>Bank / Other</label><input id="setBank" placeholder="Account title / number (optional)" /></div>
       </div>
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px;">Payment numbers customer Home pe dikhenge</p>
       <button class="btn btn-primary" onclick="saveCompanySettings()">Save Company</button>
     </div>
 
@@ -2996,21 +3202,29 @@ async function loadCompanySettings() {
     const doc = await db.collection("settings").doc("company").get();
     if (doc.exists) {
       const d = doc.data();
-      document.getElementById("setCompany").value = d.name || "";
-      document.getElementById("setPhone").value = d.phone || "";
-      document.getElementById("setAddress").value = d.address || "";
-      document.getElementById("setWhatsapp").value = d.whatsapp || "";
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ""; };
+      set("setCompany", d.name);
+      set("setPhone", d.phone);
+      set("setAddress", d.address);
+      set("setWhatsapp", d.whatsapp);
+      set("setEasypaisa", d.easypaisa);
+      set("setJazzcash", d.jazzcash);
+      set("setBank", d.bank);
     }
   } catch (e) {}
 }
 
 async function saveCompanySettings() {
   try {
+    const val = (id) => (document.getElementById(id)?.value || "").trim();
     await db.collection("settings").doc("company").set({
-      name: document.getElementById("setCompany").value.trim(),
-      phone: document.getElementById("setPhone").value.trim(),
-      address: document.getElementById("setAddress").value.trim(),
-      whatsapp: document.getElementById("setWhatsapp").value.trim(),
+      name: val("setCompany"),
+      phone: val("setPhone"),
+      address: val("setAddress"),
+      whatsapp: val("setWhatsapp"),
+      easypaisa: val("setEasypaisa"),
+      jazzcash: val("setJazzcash"),
+      bank: val("setBank"),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
     showToast("Company settings saved", "success");
